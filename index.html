@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cacau Sky Delivery</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.90.0/phaser.min.js"></script>
+</head>
+<body>
+  <main class="game">
+    <div id="gameCanvas" class="phaser-stage" aria-label="Cacau Sky Delivery"></div>
+
+    <section class="hud" aria-label="Painel do jogo">
+      <div class="stat">
+        <span>Pontos</span>
+        <strong id="scoreValue">0</strong>
+      </div>
+      <div class="stat">
+        <span>Fase</span>
+        <strong id="levelValue">1</strong>
+      </div>
+      <div class="stat">
+        <span>Vidas</span>
+        <strong id="livesValue">3</strong>
+      </div>
+      <div class="stat">
+        <span>Tempo</span>
+        <strong id="timerValue">60</strong>
+      </div>
+      <div class="stat">
+        <span>Energia</span>
+        <strong id="energyValue">100</strong>
+      </div>
+      <div class="stat">
+        <span>Estrelas</span>
+        <strong id="coinValue">0</strong>
+      </div>
+      <div class="stat">
+        <span>Recorde</span>
+        <strong id="bestValue">0</strong>
+      </div>
+      <div class="mission" id="missionText">Pegue um bebe animal e leve ate a familia correta.</div>
+    </section>
+
+    <aside class="bag-paws" aria-label="Bebe animal na bolsa">
+      <span class="bag-label">Bolsa de entrega</span>
+      <div class="paw-row" id="pawBag"></div>
+    </aside>
+
+    <section class="panel" id="startPanel">
+      <div class="panel-inner">
+        <p>Cacau Sky Delivery</p>
+        <h1>Cacau leva bebes animais para casa</h1>
+        <div class="menu-actions">
+          <button id="startButton" type="button">Jogar</button>
+          <button class="secondary-button" id="shopButton" type="button">Looks</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="gameOverPanel">
+      <div class="panel-inner">
+        <p>Fim da rota</p>
+        <h2 id="finalScore">0 pontos</h2>
+        <div class="rank-line" id="rankLine">Recorde: 0</div>
+        <button id="restartButton" type="button">Jogar de novo</button>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="shopPanel">
+      <div class="panel-inner shop-card">
+        <p>Looks da Cacau</p>
+        <h2>Bolsa e helice</h2>
+        <div class="rank-line" id="shopStatus">Estrelas: 0</div>
+        <div class="shop-grid" id="shopGrid"></div>
+        <button class="secondary-button" id="closeShopButton" type="button">Voltar</button>
+      </div>
+    </section>
+
+    <div class="controls">
+      <span>↑ ↓ → / W S D</span>
+      <span>arraste para interceptar</span>
+    </div>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
