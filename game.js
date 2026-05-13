@@ -7,7 +7,9 @@ const coinValue = document.getElementById("coinValue");
 const bestValue = document.getElementById("bestValue");
 const pawBag = document.getElementById("pawBag");
 const missionText = document.getElementById("missionText");
+const gameRoot = document.getElementById("gameRoot");
 const startPanel = document.getElementById("startPanel");
+const pausePanel = document.getElementById("pausePanel");
 const gameOverPanel = document.getElementById("gameOverPanel");
 const shopPanel = document.getElementById("shopPanel");
 const shopGrid = document.getElementById("shopGrid");
@@ -15,6 +17,8 @@ const shopStatus = document.getElementById("shopStatus");
 const finalScore = document.getElementById("finalScore");
 const rankLine = document.getElementById("rankLine");
 const startButton = document.getElementById("startButton");
+const pauseButton = document.getElementById("pauseButton");
+const resumeButton = document.getElementById("resumeButton");
 const restartButton = document.getElementById("restartButton");
 const shopButton = document.getElementById("shopButton");
 const closeShopButton = document.getElementById("closeShopButton");
@@ -132,6 +136,11 @@ function renderShop() {
   }
 }
 
+function setGameUiState(state) {
+  gameRoot.classList.remove("is-menu", "is-playing", "is-paused", "is-ended", "is-shop");
+  gameRoot.classList.add(`is-${state}`);
+}
+
 class CacauScene extends Phaser.Scene {
   constructor() {
     super("CacauScene");
@@ -151,6 +160,7 @@ class CacauScene extends Phaser.Scene {
     this.deliveries = 0;
     this.worldTime = 0;
     this.running = false;
+    this.paused = false;
     this.audioContext = null;
     this.pointerTarget = null;
     this.clouds = [];
@@ -168,7 +178,7 @@ class CacauScene extends Phaser.Scene {
     this.route = {
       state: "pickup",
       order: null,
-      nursery: { x: 315, y: 168, w: 164, h: 104, label: "Berçário", phase: 0, vx: 36, vy: 24 },
+      nursery: { x: 315, y: 168, w: 184, h: 138, label: "Berçário", phase: 0, vx: 36, vy: 24 },
       destination: { x: 500, y: 434, w: 176, h: 118, label: "Casinha Destino", phase: 1.8, vx: 32, vy: 22 }
     };
     this.keys = this.input.keyboard.addKeys({
@@ -221,6 +231,12 @@ class CacauScene extends Phaser.Scene {
     this.timers = { cloud: 0.2, hazard: 1.6, star: 0.7, coin: 1.1, heart: 5.4, bolt: 4.2 };
     this.startRoute();
     this.running = true;
+    this.paused = false;
+    setGameUiState("playing");
+    pausePanel.classList.add("hidden");
+    pauseButton.classList.remove("hidden");
+    pauseButton.textContent = "Pausar";
+    pauseButton.setAttribute("aria-pressed", "false");
     this.playSound("start");
     this.time.delayedCall(180, () => this.playSound("happyBark"));
     this.updateHud();
@@ -230,14 +246,14 @@ class CacauScene extends Phaser.Scene {
     const order = Phaser.Utils.Array.GetRandom(babyDeliveryTypes);
     this.route.state = "pickup";
     this.route.order = { ...order, requiredId: order.id, requiredColor: order.colorName };
-    this.route.nursery = this.makeMovingRoutePoint({ x: 270, y: Phaser.Math.Between(136, 320), w: 164, h: 104, label: "Berçário" }, 0);
+    this.route.nursery = this.makeMovingRoutePoint({ x: 270, y: Phaser.Math.Between(136, 320), w: 184, h: 138, label: "Berçário" }, 0);
     this.route.destination = this.makeMovingRoutePoint({ ...order.home, label: order.destination }, 1);
     this.bird.carrying = null;
   }
 
   makeMovingRoutePoint(point, lane) {
     const baseX = W + Phaser.Math.Between(lane === 0 ? 90 : 180, lane === 0 ? 260 : 360);
-    const baseY = Phaser.Math.Clamp(point.y + Phaser.Math.Between(-95, 95), 132, H - point.h - 94);
+    const baseY = Phaser.Math.Clamp(point.y + Phaser.Math.Between(-95, 95), this.safeTopY(), H - point.h - 94);
     return {
       ...point,
       x: baseX,
@@ -294,6 +310,7 @@ class CacauScene extends Phaser.Scene {
   }
 
   playSound(name) {
+    if (this.paused) return;
     this.ensureAudio();
     if (name === "start") { this.tone(440, 0.08, "triangle"); this.tone(660, 0.1, "triangle", 0.04, 0.08); }
     if (name === "bark") { this.tone(720, 0.055, "triangle", 0.032); this.tone(960, 0.07, "triangle", 0.028, 0.075); }
@@ -311,45 +328,80 @@ class CacauScene extends Phaser.Scene {
     return 1 + (this.level - 1) * 0.22;
   }
 
+  isPhonePortrait() {
+    return window.matchMedia("(max-width: 640px) and (orientation: portrait)").matches;
+  }
+
+  safeTopY() {
+    return this.isPhonePortrait() ? 150 : 88;
+  }
+
   spawnCloud() {
     const size = Phaser.Math.FloatBetween(0.72, 1.35);
     const aimAtRoute = this.level >= 2 && Math.random() < 0.42;
     const activePoint = this.route.state === "pickup" ? this.route.nursery : this.route.destination;
-    const y = aimAtRoute ? activePoint.y + Phaser.Math.Between(-34, 34) : Phaser.Math.FloatBetween(105, H - 150);
-    this.clouds.push({ x: W + 110, y: Phaser.Math.Clamp(y, 100, H - 150), w: 116 * size, h: 62 * size, speed: Phaser.Math.FloatBetween(215, 295) * this.gameSpeed(), phase: Phaser.Math.FloatBetween(0, Math.PI * 2) });
+    const y = aimAtRoute ? activePoint.y + Phaser.Math.Between(-34, 34) : Phaser.Math.FloatBetween(this.safeTopY() + 12, H - 150);
+    this.clouds.push({ x: W + 110, y: Phaser.Math.Clamp(y, this.safeTopY(), H - 150), w: 116 * size, h: 62 * size, speed: Phaser.Math.FloatBetween(215, 295) * this.gameSpeed(), phase: Phaser.Math.FloatBetween(0, Math.PI * 2) });
   }
 
   spawnHazard() {
     const type = Phaser.Utils.Array.GetRandom(this.level < 2 ? ["balloon"] : ["balloon", "kite"]);
     const smart = this.level >= 2 && Math.random() < Math.min(0.62, 0.22 + this.level * 0.07);
-    const targetY = smart ? this.bird.y + Phaser.Math.Between(-80, 80) : Phaser.Math.FloatBetween(118, H - 150);
-    const hazard = { type, x: W + 90, y: Phaser.Math.Clamp(targetY, 118, H - 150), w: 62, h: 54, speed: Phaser.Math.FloatBetween(230, 320) * this.gameSpeed(), phase: Phaser.Math.FloatBetween(0, Math.PI * 2), smart };
+    const targetY = smart ? this.bird.y + Phaser.Math.Between(-80, 80) : Phaser.Math.FloatBetween(this.safeTopY() + 18, H - 150);
+    const hazard = { type, x: W + 90, y: Phaser.Math.Clamp(targetY, this.safeTopY(), H - 150), w: 62, h: 54, speed: Phaser.Math.FloatBetween(230, 320) * this.gameSpeed(), phase: Phaser.Math.FloatBetween(0, Math.PI * 2), smart };
     if (type === "balloon") { hazard.w = 54; hazard.h = 86; hazard.speed *= 0.82; }
     if (type === "kite") { hazard.w = 72; hazard.h = 78; hazard.speed *= 1.08; }
     this.hazards.push(hazard);
   }
 
   spawnStar() {
-    this.stars.push({ x: W + 54, y: Phaser.Math.FloatBetween(120, H - 118), w: 38, h: 38, speed: Phaser.Math.FloatBetween(205, 270) * this.gameSpeed(), spin: Phaser.Math.FloatBetween(0, Math.PI * 2) });
+    this.stars.push({ x: W + 54, y: Phaser.Math.FloatBetween(this.safeTopY() + 18, H - 118), w: 38, h: 38, speed: Phaser.Math.FloatBetween(205, 270) * this.gameSpeed(), spin: Phaser.Math.FloatBetween(0, Math.PI * 2) });
   }
 
   spawnCoin() {
-    this.coinsOnMap.push({ x: W + 46, y: Phaser.Math.FloatBetween(122, H - 124), w: 32, h: 32, speed: Phaser.Math.FloatBetween(220, 285) * this.gameSpeed(), spin: Phaser.Math.FloatBetween(0, Math.PI * 2) });
+    this.coinsOnMap.push({ x: W + 46, y: Phaser.Math.FloatBetween(this.safeTopY() + 18, H - 124), w: 32, h: 32, speed: Phaser.Math.FloatBetween(220, 285) * this.gameSpeed(), spin: Phaser.Math.FloatBetween(0, Math.PI * 2) });
   }
 
   spawnHeart() {
-    this.hearts.push({ x: W + 54, y: Phaser.Math.FloatBetween(128, H - 130), w: 40, h: 36, speed: Phaser.Math.FloatBetween(205, 255) * this.gameSpeed(), spin: Phaser.Math.FloatBetween(0, Math.PI * 2) });
+    this.hearts.push({ x: W + 54, y: Phaser.Math.FloatBetween(this.safeTopY() + 20, H - 130), w: 40, h: 36, speed: Phaser.Math.FloatBetween(205, 255) * this.gameSpeed(), spin: Phaser.Math.FloatBetween(0, Math.PI * 2) });
   }
 
   spawnEnergyBolt() {
-    this.energyBolts.push({ x: W + 62, y: Phaser.Math.FloatBetween(122, H - 150), w: 48, h: 74, speed: Phaser.Math.FloatBetween(215, 270) * this.gameSpeed(), spin: Phaser.Math.FloatBetween(0, Math.PI * 2) });
+    this.energyBolts.push({ x: W + 62, y: Phaser.Math.FloatBetween(this.safeTopY() + 18, H - 150), w: 48, h: 74, speed: Phaser.Math.FloatBetween(215, 270) * this.gameSpeed(), spin: Phaser.Math.FloatBetween(0, Math.PI * 2) });
   }
 
   update(time, deltaMs) {
     const dt = Math.min(0.033, deltaMs / 1000);
-    this.worldTime += dt;
-    if (this.running) this.updateGame(dt);
+    if (!this.paused) this.worldTime += dt;
+    if (this.running && !this.paused) this.updateGame(dt);
     this.draw();
+  }
+
+  togglePause() {
+    if (this.paused) this.resumeGame();
+    else this.pauseGame();
+  }
+
+  pauseGame() {
+    if (!this.running || this.paused) return;
+    this.paused = true;
+    setGameUiState("paused");
+    this.pointerTarget = null;
+    pausePanel.classList.remove("hidden");
+    pauseButton.classList.add("hidden");
+    pauseButton.setAttribute("aria-pressed", "true");
+    if (this.audioContext?.state === "running") this.audioContext.suspend();
+  }
+
+  resumeGame() {
+    if (!this.running || !this.paused) return;
+    this.paused = false;
+    setGameUiState("playing");
+    pausePanel.classList.add("hidden");
+    pauseButton.classList.remove("hidden");
+    pauseButton.textContent = "Pausar";
+    pauseButton.setAttribute("aria-pressed", "false");
+    if (this.audioContext?.state === "suspended") this.audioContext.resume();
   }
 
   updateGame(dt) {
@@ -398,9 +450,8 @@ class CacauScene extends Phaser.Scene {
       this.bird.y += dy * move;
     }
     this.bird.direcao = "direita";
-    if (dx === 0 && !this.pointerTarget) this.bird.x += (210 - this.bird.x) * Math.min(1, dt * 2.5);
     this.bird.x = Phaser.Math.Clamp(this.bird.x, 170, W * 0.58);
-    this.bird.y = Phaser.Math.Clamp(this.bird.y, 88, H - this.bird.h - 56);
+    this.bird.y = Phaser.Math.Clamp(this.bird.y, this.safeTopY(), H - this.bird.h - 56);
     this.bird.wing += dt * 15;
     this.bird.hurt = Math.max(0, this.bird.hurt - dt);
   }
@@ -435,7 +486,7 @@ class CacauScene extends Phaser.Scene {
     this.playSound("hit");
     this.addPop(Math.max(40, point.x + point.w), point.y + point.h / 2, 0xee5d5a, 10);
     if (this.route.state === "pickup") {
-      this.route.nursery = this.makeMovingRoutePoint({ x: 0, y: Phaser.Math.Between(136, 420), w: 164, h: 104, label: "Berçário" }, 0);
+      this.route.nursery = this.makeMovingRoutePoint({ x: 0, y: Phaser.Math.Between(136, 420), w: 184, h: 138, label: "Berçário" }, 0);
     } else if (this.route.order) {
       this.route.destination = this.makeMovingRoutePoint({ ...this.route.order.home, label: this.route.order.destination }, 1);
     }
@@ -604,6 +655,12 @@ class CacauScene extends Phaser.Scene {
   endGame() {
     if (!this.running) return;
     this.running = false;
+    this.paused = false;
+    setGameUiState("ended");
+    pausePanel.classList.add("hidden");
+    pauseButton.classList.add("hidden");
+    pauseButton.textContent = "Pausar";
+    pauseButton.setAttribute("aria-pressed", "false");
     this.playSound("over");
     save.best = Math.max(save.best, this.score);
     save.totalCoins += this.coins;
@@ -913,13 +970,160 @@ class CacauScene extends Phaser.Scene {
 
   drawNursery(point) {
     const active = this.route.state === "pickup";
-    this.g.fillStyle(0xfff7ed, active ? 1 : 0.62);
-    this.g.lineStyle(active ? 5 : 3, 0xf59e0b, active ? 1 : 0.45);
-    this.g.fillRoundedRect(point.x, point.y, point.w, point.h, 18);
-    this.g.strokeRoundedRect(point.x, point.y, point.w, point.h, 18);
-    this.drawText("PONTO A", point.x + point.w / 2, point.y + 17, "15px", "#f59e0b", "center");
-    this.drawText("Berçário", point.x + point.w / 2, point.y + 43, "18px", "#173047", "center");
-    this.drawText(animalEmoji[this.route.order.id], point.x + point.w / 2, point.y + 74, "30px", "#173047", "center");
+    const pulse = active ? 1 + Math.sin(this.worldTime * 5) * 0.035 : 1;
+    const bob = Math.sin(this.worldTime * 3.2 + point.phase) * 3;
+    const x = point.x;
+    const y = point.y + bob;
+    const cx = x + point.w / 2;
+    const cy = y + 72;
+
+    this.g.fillStyle(0x173047, 0.16);
+    this.g.fillEllipse(cx, y + point.h + 8, point.w * 0.78, 18);
+    this.g.fillStyle(0xe0f7ff, active ? 0.98 : 0.72);
+    this.g.lineStyle(active ? 5 : 3, this.route.order.familyColor, active ? 1 : 0.45);
+    this.g.fillRoundedRect(x, y, point.w, point.h, 24);
+    this.g.strokeRoundedRect(x, y, point.w, point.h, 24);
+    this.g.fillStyle(this.route.order.color, 0.18);
+    this.g.fillCircle(cx, cy, 64 * pulse);
+    this.g.fillStyle(0xffffff, 0.68);
+    this.g.fillCircle(cx - 33, cy - 30, 18);
+    this.g.fillCircle(cx + 38, cy - 36, 12);
+    this.drawBabyAnimalPortrait(this.route.order.id, cx, cy + 2, pulse);
+    this.g.fillStyle(0xffffff, 0.94);
+    this.g.fillRoundedRect(x + 24, y + 8, point.w - 48, 26, 13);
+    this.g.lineStyle(2, this.route.order.familyColor, 0.45);
+    this.g.strokeRoundedRect(x + 24, y + 8, point.w - 48, 26, 13);
+    this.drawText(this.route.order.name.replace("bebe ", ""), cx, y + 13, "13px", "#173047", "center");
+  }
+
+  drawBabyAnimalPortrait(id, cx, cy, pulse = 1) {
+    const data = {
+      panda: { body: 0xf8fafc, head: 0xffffff, accent: 0x172033, belly: 0xf8fafc, nose: 0x172033, eye: 0x1d4ed8, ear: 0x172033 },
+      puppy: { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 },
+      kitten: { body: 0xcbd5e1, head: 0xe2e8f0, accent: 0x64748b, belly: 0xffffff, nose: 0xec4899, eye: 0x0ea5e9, ear: 0x94a3b8 },
+      bunny: { body: 0xf9a8d4, head: 0xffd6e7, accent: 0xf472b6, belly: 0xffffff, nose: 0xdb2777, eye: 0x2563eb, ear: 0xf472b6 },
+      fox: { body: 0xfb923c, head: 0xffa85c, accent: 0xc2410c, belly: 0xfff7ed, nose: 0x172033, eye: 0x0f766e, ear: 0xc2410c },
+      koala: { body: 0xbfdbfe, head: 0xdbeafe, accent: 0x64748b, belly: 0xffffff, nose: 0x334155, eye: 0x2563eb, ear: 0x94a3b8 },
+      turtle: { body: 0x86efac, head: 0xbbf7d0, accent: 0x15803d, belly: 0xfef3c7, nose: 0x166534, eye: 0x2563eb, ear: 0x22c55e },
+      duckling: { body: 0xfde68a, head: 0xfef08a, accent: 0xf59e0b, belly: 0xfffbeb, nose: 0xf97316, eye: 0x2563eb, ear: 0xfacc15 }
+    }[id] || { body: 0xffffff, head: 0xffffff, accent: 0x2478c7, belly: 0xffffff, nose: 0x173047, eye: 0x2563eb, ear: 0x2478c7 };
+    const blink = Math.sin(this.worldTime * 3.1) > 0.965;
+    const look = Math.sin(this.worldTime * 1.7) * 1.8;
+
+    this.g.fillStyle(0x173047, 0.12);
+    this.g.fillEllipse(cx, cy + 49, 76, 15);
+    this.g.fillStyle(data.body);
+    this.g.lineStyle(4, data.accent, 0.82);
+
+    if (id === "turtle") {
+      this.g.fillEllipse(cx, cy + 19, 74, 56);
+      this.g.strokeEllipse(cx, cy + 19, 74, 56);
+      this.g.fillStyle(data.accent, 0.34);
+      this.g.fillEllipse(cx, cy + 17, 48, 34);
+      this.g.lineStyle(2, data.accent, 0.55);
+      this.g.lineBetween(cx - 18, cy + 2, cx + 18, cy + 32);
+      this.g.lineBetween(cx + 18, cy + 2, cx - 18, cy + 32);
+      this.g.fillStyle(data.head);
+      this.g.fillEllipse(cx, cy - 23, 52, 44);
+    } else if (id === "duckling") {
+      this.g.fillEllipse(cx, cy + 19, 56, 62);
+      this.g.strokeEllipse(cx, cy + 19, 56, 62);
+      this.g.fillStyle(data.head);
+      this.g.fillEllipse(cx, cy - 21, 64, 54);
+    } else {
+      this.g.fillEllipse(cx, cy + 20, 58, 66);
+      this.g.strokeEllipse(cx, cy + 20, 58, 66);
+      this.g.fillStyle(data.belly);
+      this.g.fillEllipse(cx, cy + 24, 34, 39);
+      this.drawAnimalEars(id, cx, cy, data);
+      this.g.fillStyle(data.head);
+      this.g.lineStyle(4, data.accent, 0.85);
+      this.g.fillEllipse(cx, cy - 20, 72, 58);
+      this.g.strokeEllipse(cx, cy - 20, 72, 58);
+    }
+
+    if (id === "panda") {
+      this.g.fillStyle(data.accent);
+      this.g.fillEllipse(cx - 18, cy - 23, 22, 27);
+      this.g.fillEllipse(cx + 18, cy - 23, 22, 27);
+      this.g.fillStyle(data.head);
+      this.g.fillEllipse(cx, cy - 15, 36, 28);
+    }
+    if (id === "fox") {
+      this.g.fillStyle(data.belly);
+      this.triangle(cx - 32, cy - 25, cx, cy + 4, cx + 32, cy - 25);
+    }
+
+    this.drawAnimalEyes(cx, cy - 23, data.eye, blink, look);
+    this.drawAnimalNoseAndMouth(id, cx, cy - 5, data);
+    this.g.fillStyle(0xffffff, 0.5);
+    this.g.fillEllipse(cx - 18, cy - 43, 24, 10);
+    this.g.fillStyle(0xffffff, 0.32);
+    this.g.fillCircle(cx + 34, cy - 45, 4 * pulse);
+    this.g.fillCircle(cx + 43, cy - 35, 2.6 * pulse);
+  }
+
+  drawAnimalEars(id, cx, cy, data) {
+    this.g.fillStyle(data.ear);
+    this.g.lineStyle(3, data.accent, 0.8);
+    if (id === "bunny") {
+      this.g.fillEllipse(cx - 22, cy - 56, 18, 56);
+      this.g.fillEllipse(cx + 22, cy - 56, 18, 56);
+      this.g.fillStyle(0xffe4ef);
+      this.g.fillEllipse(cx - 22, cy - 55, 8, 36);
+      this.g.fillEllipse(cx + 22, cy - 55, 8, 36);
+      return;
+    }
+    if (id === "kitten" || id === "fox") {
+      this.triangle(cx - 34, cy - 34, cx - 21, cy - 66, cx - 8, cy - 35);
+      this.triangle(cx + 34, cy - 34, cx + 21, cy - 66, cx + 8, cy - 35);
+      this.g.fillStyle(0xffd6e7, 0.82);
+      this.triangle(cx - 27, cy - 37, cx - 21, cy - 52, cx - 15, cy - 37);
+      this.triangle(cx + 27, cy - 37, cx + 21, cy - 52, cx + 15, cy - 37);
+      return;
+    }
+    this.g.fillCircle(cx - 28, cy - 37, 17);
+    this.g.fillCircle(cx + 28, cy - 37, 17);
+    if (id === "puppy") {
+      this.g.fillEllipse(cx - 36, cy - 25, 18, 42);
+      this.g.fillEllipse(cx + 36, cy - 25, 18, 42);
+    }
+  }
+
+  drawAnimalEyes(cx, cy, color, blink, look) {
+    for (const side of [-1, 1]) {
+      const ex = cx + side * 16;
+      if (blink) {
+        this.g.lineStyle(4, 0x173047, 0.8);
+        this.g.lineBetween(ex - 9, cy, ex + 9, cy);
+        continue;
+      }
+      this.g.fillStyle(0xffffff);
+      this.g.fillCircle(ex, cy, 13);
+      this.g.lineStyle(2, 0x173047, 0.4);
+      this.g.strokeCircle(ex, cy, 13);
+      this.g.fillStyle(color);
+      this.g.fillCircle(ex + look, cy + 1, 7);
+      this.g.fillStyle(0x07111f);
+      this.g.fillCircle(ex + look, cy + 1, 4);
+      this.g.fillStyle(0xffffff);
+      this.g.fillCircle(ex + look + 3, cy - 3, 2.8);
+    }
+  }
+
+  drawAnimalNoseAndMouth(id, cx, cy, data) {
+    if (id === "duckling") {
+      this.g.fillStyle(data.nose);
+      this.triangle(cx - 14, cy - 1, cx + 14, cy - 1, cx, cy + 13);
+      return;
+    }
+    this.g.fillStyle(data.nose);
+    this.g.fillEllipse(cx, cy, 12, 8);
+    this.g.lineStyle(2, 0x173047, 0.5);
+    this.g.beginPath();
+    this.g.arc(cx - 5, cy + 8, 6, 0.12, Math.PI - 0.08);
+    this.g.arc(cx + 5, cy + 8, 6, 0.08, Math.PI - 0.12);
+    this.g.strokePath();
   }
 
   drawDestinationHouse(point) {
@@ -1321,22 +1525,36 @@ const config = {
 new Phaser.Game(config);
 
 function openShop() {
+  setGameUiState("shop");
   renderShop();
   shopPanel.classList.remove("hidden");
 }
 
 function closeShop() {
   shopPanel.classList.add("hidden");
+  if (!gameScene?.running) setGameUiState(gameOverPanel.classList.contains("hidden") ? "menu" : "ended");
+  else if (gameScene.paused) setGameUiState("paused");
+  else setGameUiState("playing");
 }
 
 startButton.addEventListener("click", () => {
   startPanel.classList.add("hidden");
+  pausePanel.classList.add("hidden");
   gameOverPanel.classList.add("hidden");
   closeShop();
   gameScene?.resetGame();
 });
 
+pauseButton.addEventListener("click", () => gameScene?.togglePause());
+resumeButton.addEventListener("click", () => gameScene?.resumeGame());
+window.addEventListener("keydown", (event) => {
+  if (event.key.toLowerCase() !== "p" && event.key !== "Escape") return;
+  event.preventDefault();
+  gameScene?.togglePause();
+});
+
 restartButton.addEventListener("click", () => {
+  pausePanel.classList.add("hidden");
   gameOverPanel.classList.add("hidden");
   closeShop();
   gameScene?.resetGame();
@@ -1347,3 +1565,5 @@ closeShopButton.addEventListener("click", closeShop);
 
 renderShop();
 updatePawHud(null);
+setGameUiState("menu");
+pauseButton.classList.add("hidden");

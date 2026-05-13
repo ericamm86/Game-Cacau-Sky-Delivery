@@ -8,7 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.90.0/phaser.min.js"></script>
 </head>
 <body>
-  <main class="game">
+  <main class="game is-menu" id="gameRoot">
     <div id="gameCanvas" class="phaser-stage" aria-label="Cacau Sky Delivery"></div>
 
     <section class="hud" aria-label="Painel do jogo">
@@ -43,6 +43,8 @@
       <div class="mission" id="missionText">Pegue um bebe animal e leve ate a familia correta.</div>
     </section>
 
+    <button class="pause-button" id="pauseButton" type="button" aria-pressed="false">Pausar</button>
+
     <aside class="bag-paws" aria-label="Bebe animal na bolsa">
       <span class="bag-label">Bolsa de entrega</span>
       <div class="paw-row" id="pawBag"></div>
@@ -56,6 +58,14 @@
           <button id="startButton" type="button">Jogar</button>
           <button class="secondary-button" id="shopButton" type="button">Looks</button>
         </div>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="pausePanel">
+      <div class="panel-inner">
+        <p>Rota pausada</p>
+        <h2>Cacau esta esperando</h2>
+        <button id="resumeButton" type="button">Retomar</button>
       </div>
     </section>
 
@@ -80,6 +90,7 @@
 
     <div class="controls">
       <span>↑ ↓ → / W S D</span>
+      <span>P / Esc pausa</span>
       <span>arraste para interceptar</span>
     </div>
   </main>

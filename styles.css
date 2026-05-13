@@ -16,9 +16,12 @@
 html,
 body {
   width: 100%;
+  height: 100%;
   min-height: 100%;
   margin: 0;
   overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
   color: var(--ink);
   font-family: Inter, ui-rounded, "Segoe UI", Arial, Helvetica, sans-serif;
   background:
@@ -58,14 +61,22 @@ button:hover {
   position: relative;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
-.phaser-stage,
-.phaser-stage canvas {
+.phaser-stage {
   width: 100%;
   height: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.phaser-stage canvas {
   display: block;
+  max-width: 100%;
+  max-height: 100%;
   touch-action: none;
 }
 
@@ -79,6 +90,18 @@ button:hover {
   gap: 10px;
   align-items: start;
   pointer-events: none;
+}
+
+.game.is-menu .hud,
+.game.is-menu .bag-paws,
+.game.is-menu .controls,
+.game.is-shop .hud,
+.game.is-shop .bag-paws,
+.game.is-shop .controls,
+.game.is-ended .hud,
+.game.is-ended .bag-paws,
+.game.is-ended .controls {
+  display: none;
 }
 
 .stat,
@@ -227,9 +250,10 @@ button:hover {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   background: rgba(13, 46, 70, 0.24);
   backdrop-filter: blur(2px);
+  overflow: auto;
 }
 
 .panel.hidden {
@@ -280,6 +304,23 @@ h2 {
   pointer-events: none;
 }
 
+.pause-button {
+  position: fixed;
+  top: 92px;
+  right: 16px;
+  min-width: 112px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  box-shadow: 0 12px 28px rgba(23, 48, 71, 0.18), inset 0 -3px 0 rgba(23, 48, 71, 0.16);
+  z-index: 3;
+}
+
+.pause-button.hidden {
+  display: none;
+}
+
 @media (max-width: 980px) {
   .hud {
     grid-template-columns: repeat(4, 1fr);
@@ -313,6 +354,15 @@ h2 {
     justify-content: center;
   }
 
+  .pause-button {
+    top: auto;
+    right: 10px;
+    bottom: 58px;
+    min-width: 96px;
+    min-height: 42px;
+    font-size: 0.84rem;
+  }
+
   .bag-paws {
     left: 10px;
     bottom: 58px;
@@ -320,5 +370,163 @@ h2 {
 
   .shop-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .phaser-stage canvas {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none;
+    max-height: none;
+  }
+
+  button {
+    min-width: 0;
+    min-height: 52px;
+    padding: 0 18px;
+    font-size: 1rem;
+  }
+
+  .hud {
+    top: max(8px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .stat {
+    height: 45px;
+    padding: 6px 8px;
+    overflow: hidden;
+  }
+
+  .stat span {
+    font-size: 0.56rem;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .stat strong {
+    margin-top: 2px;
+    font-size: 1.12rem;
+  }
+
+  .mission {
+    min-height: 44px;
+    padding: 10px 11px;
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+
+  .panel {
+    align-items: center;
+  }
+
+  .panel-inner {
+    padding: 24px 16px;
+  }
+
+  h1,
+  h2 {
+    margin-bottom: 20px;
+    font-size: clamp(2rem, 10vw, 2.7rem);
+    line-height: 0.96;
+  }
+
+  .menu-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .controls {
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 10px;
+    padding: 8px 10px;
+    text-align: center;
+    font-size: 0.72rem;
+    line-height: 1.1;
+  }
+
+  .controls span:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .pause-button {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 62px);
+  }
+
+  .bag-paws {
+    left: max(8px, env(safe-area-inset-left));
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 58px);
+    min-width: 106px;
+    padding: 8px 9px;
+  }
+
+  .bag-label {
+    font-size: 0.58rem;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .hud {
+    grid-template-columns: repeat(7, minmax(52px, 76px)) minmax(180px, 1fr);
+    gap: 6px;
+  }
+
+  .stat {
+    height: 42px;
+    padding: 6px 7px;
+  }
+
+  .stat span {
+    font-size: 0.52rem;
+  }
+
+  .stat strong {
+    font-size: 1.02rem;
+  }
+
+  .mission {
+    grid-column: auto;
+    min-height: 42px;
+    max-height: 42px;
+    padding: 8px 10px;
+    font-size: 0.72rem;
+  }
+
+  .panel-inner {
+    width: min(460px, 100%);
+    padding: 18px;
+  }
+
+  h1,
+  h2 {
+    margin-bottom: 14px;
+    font-size: clamp(1.8rem, 6vw, 2.55rem);
+  }
+
+  .controls {
+    left: auto;
+    width: auto;
+    max-width: 470px;
+    padding: 8px 10px;
+    font-size: 0.7rem;
+  }
+
+  .bag-paws {
+    bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .pause-button {
+    top: 58px;
+    right: max(8px, env(safe-area-inset-right));
+    bottom: auto;
   }
 }
