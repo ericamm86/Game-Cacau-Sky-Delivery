@@ -1,0 +1,30 @@
+{
+  "name": "cacau-sky-delivery",
+  "version": "1.0.0",
+  "description": "Jogo em HTML, CSS e JavaScript usando Phaser 3.",
+  "main": "server/app.js",
+  "scripts": {
+    "start": "node server/app.js",
+    "dev": "node server/app.js",
+    "check": "node --check app.js && node --check game.js && node --check server/app.js && node --check server/db.js && node --check server/security.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ericamm86/Game-Cacau-Sky-Delivery.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/ericamm86/Game-Cacau-Sky-Delivery/issues"
+  },
+  "homepage": "https://github.com/ericamm86/Game-Cacau-Sky-Delivery#readme",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.10.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3"
+  }
+}

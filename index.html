@@ -4,12 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cacau Sky Delivery</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=cloud-meta-20260520">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.90.0/phaser.min.js"></script>
 </head>
 <body>
   <main class="game is-menu" id="gameRoot">
     <div id="gameCanvas" class="phaser-stage" aria-label="Cacau Sky Delivery"></div>
+
+    <section class="account-bar" aria-label="Conta e progresso">
+      <div>
+        <span id="accountName">Visitante</span>
+        <strong id="accountLevel">Nivel 1</strong>
+      </div>
+      <div class="xp-meter" aria-label="Experiencia">
+        <span id="xpFill"></span>
+      </div>
+      <button class="icon-button" id="openAuthButton" type="button">Conta</button>
+      <button class="icon-button" id="leaderboardButton" type="button">Ranking</button>
+      <button class="icon-button" id="achievementsButton" type="button">Conquistas</button>
+      <button class="icon-button hidden" id="logoutButton" type="button">Sair</button>
+    </section>
 
     <section class="hud" aria-label="Painel do jogo">
       <div class="stat">
@@ -58,6 +72,7 @@
           <button id="startButton" type="button">Jogar</button>
           <button class="secondary-button" id="shopButton" type="button">Looks</button>
         </div>
+        <div class="account-note" id="cloudStatus">Entre na conta para salvar na nuvem.</div>
       </div>
     </section>
 
@@ -88,6 +103,62 @@
       </div>
     </section>
 
+    <section class="panel hidden" id="authPanel">
+      <div class="panel-inner auth-card">
+        <p>Conta Cacau</p>
+        <h2>Salvar na nuvem</h2>
+        <div class="auth-tabs">
+          <button class="tab-button active" id="loginTab" type="button">Login</button>
+          <button class="tab-button" id="registerTab" type="button">Cadastro</button>
+        </div>
+        <form class="auth-form" id="loginForm">
+          <label>Email<input id="loginEmail" name="email" type="email" autocomplete="email" required></label>
+          <label>Senha<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label>
+          <button type="submit">Entrar</button>
+        </form>
+        <form class="auth-form hidden" id="registerForm">
+          <label>Nome<input id="registerName" name="name" minlength="2" maxlength="60" required></label>
+          <label>Email<input id="registerEmail" name="email" type="email" autocomplete="email" required></label>
+          <label>Senha<input id="registerPassword" name="password" type="password" minlength="6" autocomplete="new-password" required></label>
+          <button type="submit">Criar conta</button>
+        </form>
+        <div class="form-message" id="authMessage"></div>
+        <button class="secondary-button" id="closeAuthButton" type="button">Voltar</button>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="tutorialPanel">
+      <div class="panel-inner tutorial-card">
+        <p>Primeiro voo</p>
+        <h2>Leve os filhotes para casa</h2>
+        <div class="tutorial-grid">
+          <div><strong>1</strong><span>Pegue o filhote no Ponto A.</span></div>
+          <div><strong>2</strong><span>Leve ate os pais no Ponto B.</span></div>
+          <div><strong>3</strong><span>Use W/S ou setas para desviar.</span></div>
+          <div><strong>4</strong><span>Segure D ou → para acelerar a rota.</span></div>
+        </div>
+        <button id="finishTutorialButton" type="button">Entendi</button>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="leaderboardPanel">
+      <div class="panel-inner board-card">
+        <p>Ranking global</p>
+        <h2>Melhores rotas</h2>
+        <div class="list-panel" id="leaderboardList"></div>
+        <button class="secondary-button" id="closeLeaderboardButton" type="button">Voltar</button>
+      </div>
+    </section>
+
+    <section class="panel hidden" id="achievementsPanel">
+      <div class="panel-inner board-card">
+        <p>Missoes</p>
+        <h2>Conquistas</h2>
+        <div class="list-panel" id="achievementsList"></div>
+        <button class="secondary-button" id="closeAchievementsButton" type="button">Voltar</button>
+      </div>
+    </section>
+
     <div class="controls">
       <span>↑ ↓ → / W S D</span>
       <span>P / Esc pausa</span>
@@ -95,6 +166,7 @@
     </div>
   </main>
 
-  <script src="game.js"></script>
+  <script src="app.js?v=cloud-meta-20260520"></script>
+  <script src="game.js?v=cloud-meta-20260520"></script>
 </body>
 </html>

@@ -1,44 +1,107 @@
 # Cacau Sky Delivery
 
-Jogo em HTML, CSS e JavaScript usando Phaser 3.
+Jogo em HTML, CSS e JavaScript com Phaser 3, agora com backend Node.js, autenticação, progresso em banco SQLite, ranking global, XP, moedas, níveis, tutorial e conquistas.
 
-## Objetivo
+## Como executar
 
-Controle a Cacau, uma pinscher preta com detalhes caramelo, bolsa de entrega e helice nas costas. Ela voa pelo ceu ensolarado para levar bebes animais as suas familias.
+1. Instale as dependências:
 
-## Como jogar
+```bash
+npm install
+```
 
-- Abra `index.html` no navegador.
-- Use ↑/↓ ou W/S para subir e descer.
-- Use → ou D para a Cacau avançar e interceptar os alvos.
-- No celular, arraste para controlar a altura e avançar.
-- Desvie das nuvens fofinhas: agora elas tiram vida.
-- Colete estrelas para recuperar energia.
-- Colete estrelas para ganhar pontos e liberar looks.
-- Desvie de baloes e pipas.
-- Pegue coracoes para ganhar vidas.
-- Pegue o raio grande para recuperar energia em dobro.
-- Pegue um bebe animal por vez.
-- Entregue cada bebe na familia correta.
-- A Cacau voa sempre para frente; o Bercario e as familias passam pela tela.
-- Pegue o bebe quando o Ponto A passar por voce e entregue quando o Ponto B aparecer.
-- A cada 3 entregas, a fase aumenta e tudo fica mais rapido.
+2. Inicie o servidor:
 
-## Sistema
+```bash
+npm start
+```
 
-- Pontuacao
-- Vidas
-- Timer
-- Fases
-- Estrelas guardadas
-- Energia
-- Loja de roupinhas para a Cacau
-- Ranking local de pontos
-- Cenarios: ceu solar, floresta, montanhas, parque e cidade dos animais
-- Sons fofinhos de inicio, estrela, bebe, entrega, fase e colisao
-- Fundo animado com parallax
-- Animacoes suaves no personagem e nos coletaveis
-- Estouro de mini ossinhos quando a Cacau acerta algo bom
-- Sistema de rotas por estado: `pickup` no Bercario e `delivery` na Casinha Destino
-- Validacao por pedido: a casinha compara o bebe na bolsinha com a familia correta
-- Motor Phaser 3 para renderizacao, input e loop de jogo
+3. Abra no navegador:
+
+```text
+http://localhost:5177
+```
+
+O servidor entrega o jogo e também expõe as APIs em `/api`.
+
+## Banco de dados
+
+O banco padrão é SQLite e fica em:
+
+```text
+data/cacau-sky.sqlite
+```
+
+As tabelas são criadas automaticamente a partir de:
+
+```text
+server/schema.sql
+```
+
+Tabelas principais:
+
+- `users`: usuários, email e senha criptografada.
+- `progress`: moedas, XP, nível, fase, recorde, entregas e tutorial.
+- `leaderboard`: pontuações globais.
+- `achievements`: conquistas disponíveis.
+- `user_achievements`: conquistas liberadas por usuário.
+- `game_sessions`: histórico validado de partidas.
+
+Para usar outro caminho de banco:
+
+```bash
+set DB_PATH=C:\caminho\cacau-sky.sqlite
+npm start
+```
+
+Para produção, defina também:
+
+```bash
+set JWT_SECRET=uma_chave_grande_e_secreta
+```
+
+## Sistemas criados
+
+- Login e cadastro com nome, email e senha.
+- Senhas protegidas com hash `bcryptjs`.
+- Sessão persistente com JWT salvo no navegador.
+- Logout.
+- Validação de campos no frontend e backend.
+- Salvamento em nuvem de moedas, XP, nível, fase, recorde, entregas e tutorial.
+- Ranking global com nome, pontuação e fase.
+- Sistema de XP, níveis e barra visual.
+- Tutorial inicial mostrado uma vez por usuário.
+- Conquistas com recompensas de moedas e XP.
+- Validação server-side de resultados da partida para reduzir alteração fácil de moedas e ranking.
+- Estrutura preparada para futuras atualizações.
+
+## Tecnologias
+
+- HTML5
+- CSS3 responsivo
+- JavaScript
+- Phaser 3
+- Node.js
+- Express
+- SQLite com `better-sqlite3`
+- JWT com `jsonwebtoken`
+- Hash de senha com `bcryptjs`
+
+## Desenvolvimento
+
+Checar sintaxe:
+
+```bash
+npm run check
+```
+
+Arquivos principais:
+
+- `index.html`: estrutura da interface.
+- `styles.css`: layout responsivo e visual.
+- `game.js`: jogo Phaser e regras de gameplay.
+- `app.js`: login, progresso, ranking, tutorial e conquistas no frontend.
+- `server/app.js`: API HTTP.
+- `server/db.js`: conexão, seed e helpers do banco.
+- `server/security.js`: validação, JWT e senhas.
+- `server/schema.sql`: estrutura do banco.

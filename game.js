@@ -90,6 +90,15 @@ function persistSave() {
   localStorage.setItem("passaroEntregadorSave", JSON.stringify(save));
 }
 
+function applyCloudProgress(progress) {
+  if (!progress) return;
+  save.best = Math.max(save.best || 0, progress.best_score || 0);
+  save.totalCoins = Math.max(save.totalCoins || 0, progress.coins || 0);
+  persistSave();
+  renderShop();
+  if (gameScene) gameScene.updateHud();
+}
+
 function updatePawHud(carrying) {
   const puppyCount = carrying?.kind === "Bebe" ? 1 : 0;
   pawBag.innerHTML = "";
@@ -158,11 +167,15 @@ class CacauScene extends Phaser.Scene {
     this.timer = 60;
     this.energy = 100;
     this.deliveries = 0;
+    this.sessionStartedAt = Date.now();
+    this.sessionSubmitted = false;
     this.worldTime = 0;
     this.running = false;
     this.paused = false;
     this.audioContext = null;
     this.pointerTarget = null;
+    this.keyState = { up: false, down: false, left: false, right: false };
+    this.forwardBoost = 0;
     this.clouds = [];
     this.hazards = [];
     this.stars = [];
@@ -178,7 +191,7 @@ class CacauScene extends Phaser.Scene {
     this.route = {
       state: "pickup",
       order: null,
-      nursery: { x: 315, y: 168, w: 184, h: 138, label: "Berçário", phase: 0, vx: 36, vy: 24 },
+      nursery: { x: 315, y: 168, w: 184, h: 138, label: "Casinha", phase: 0, vx: 36, vy: 24 },
       destination: { x: 500, y: 434, w: 176, h: 118, label: "Casinha Destino", phase: 1.8, vx: 32, vy: 22 }
     };
     this.keys = this.input.keyboard.addKeys({
@@ -190,6 +203,33 @@ class CacauScene extends Phaser.Scene {
       a: Phaser.Input.Keyboard.KeyCodes.A,
       s: Phaser.Input.Keyboard.KeyCodes.S,
       d: Phaser.Input.Keyboard.KeyCodes.D
+    });
+    this.input.keyboard.addCapture([
+      Phaser.Input.Keyboard.KeyCodes.UP,
+      Phaser.Input.Keyboard.KeyCodes.DOWN,
+      Phaser.Input.Keyboard.KeyCodes.LEFT,
+      Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      Phaser.Input.Keyboard.KeyCodes.W,
+      Phaser.Input.Keyboard.KeyCodes.A,
+      Phaser.Input.Keyboard.KeyCodes.S,
+      Phaser.Input.Keyboard.KeyCodes.D
+    ]);
+    const updateKeyState = (event, isDown) => {
+      const key = event.key.toLowerCase();
+      if (key === "arrowup" || key === "w") this.keyState.up = isDown;
+      else if (key === "arrowdown" || key === "s") this.keyState.down = isDown;
+      else if (key === "arrowleft" || key === "a") this.keyState.left = isDown;
+      else if (key === "arrowright" || key === "d") this.keyState.right = isDown;
+      else return;
+      event.preventDefault();
+    };
+    window.addEventListener("keydown", (event) => updateKeyState(event, true));
+    window.addEventListener("keyup", (event) => updateKeyState(event, false));
+    window.addEventListener("blur", () => {
+      this.keyState.up = false;
+      this.keyState.down = false;
+      this.keyState.left = false;
+      this.keyState.right = false;
     });
     this.input.on("pointerdown", (pointer) => this.pointerTarget = this.toWorldPoint(pointer));
     this.input.on("pointermove", (pointer) => {
@@ -214,6 +254,8 @@ class CacauScene extends Phaser.Scene {
     this.timer = 60;
     this.energy = 100;
     this.deliveries = 0;
+    this.sessionStartedAt = Date.now();
+    this.sessionSubmitted = false;
     this.bird.x = 210;
     this.bird.y = 340;
     this.bird.hurt = 0;
@@ -228,6 +270,7 @@ class CacauScene extends Phaser.Scene {
     this.bones.length = 0;
     this.sparkles.length = 0;
     this.barkTimer = 1.8;
+    this.forwardBoost = 0;
     this.timers = { cloud: 0.2, hazard: 1.6, star: 0.7, coin: 1.1, heart: 5.4, bolt: 4.2 };
     this.startRoute();
     this.running = true;
@@ -246,7 +289,7 @@ class CacauScene extends Phaser.Scene {
     const order = Phaser.Utils.Array.GetRandom(babyDeliveryTypes);
     this.route.state = "pickup";
     this.route.order = { ...order, requiredId: order.id, requiredColor: order.colorName };
-    this.route.nursery = this.makeMovingRoutePoint({ x: 270, y: Phaser.Math.Between(136, 320), w: 184, h: 138, label: "Berçário" }, 0);
+    this.route.nursery = this.makeMovingRoutePoint({ x: 270, y: Phaser.Math.Between(136, 320), w: 184, h: 138, label: "Casinha" }, 0);
     this.route.destination = this.makeMovingRoutePoint({ ...order.home, label: order.destination }, 1);
     this.bird.carrying = null;
   }
@@ -337,11 +380,16 @@ class CacauScene extends Phaser.Scene {
   }
 
   spawnCloud() {
-    const size = Phaser.Math.FloatBetween(0.72, 1.35);
-    const aimAtRoute = this.level >= 2 && Math.random() < 0.42;
-    const activePoint = this.route.state === "pickup" ? this.route.nursery : this.route.destination;
-    const y = aimAtRoute ? activePoint.y + Phaser.Math.Between(-34, 34) : Phaser.Math.FloatBetween(this.safeTopY() + 12, H - 150);
-    this.clouds.push({ x: W + 110, y: Phaser.Math.Clamp(y, this.safeTopY(), H - 150), w: 116 * size, h: 62 * size, speed: Phaser.Math.FloatBetween(215, 295) * this.gameSpeed(), phase: Phaser.Math.FloatBetween(0, Math.PI * 2) });
+    const size = Phaser.Math.FloatBetween(0.86, 1.55);
+    const y = Phaser.Math.FloatBetween(this.safeTopY() + 16, H - 235);
+    this.clouds.push({
+      x: W + 130,
+      y,
+      w: 128 * size,
+      h: 56 * size,
+      speed: Phaser.Math.FloatBetween(115, 175) * this.gameSpeed(),
+      phase: Phaser.Math.FloatBetween(0, Math.PI * 2)
+    });
   }
 
   spawnHazard() {
@@ -437,21 +485,23 @@ class CacauScene extends Phaser.Scene {
     const move = this.bird.speed * dt;
     let dx = 0;
     let dy = 0;
-    if (this.keys.right.isDown || this.keys.d.isDown) dx += 1;
-    if (this.keys.left.isDown || this.keys.a.isDown) dx -= 1;
-    if (this.keys.up.isDown || this.keys.w.isDown) dy -= 1;
-    if (this.keys.down.isDown || this.keys.s.isDown) dy += 1;
+    if (this.keys.right.isDown || this.keys.d.isDown || this.keyState.right) dx += 1;
+    if (this.keys.left.isDown || this.keys.a.isDown || this.keyState.left) dx -= 1;
+    if (this.keys.up.isDown || this.keys.w.isDown || this.keyState.up) dy -= 1;
+    if (this.keys.down.isDown || this.keys.s.isDown || this.keyState.down) dy += 1;
     if (this.pointerTarget) {
       this.bird.x += (this.pointerTarget.x - this.bird.x - this.bird.w / 2) * Math.min(1, dt * 5);
       this.bird.y += (this.pointerTarget.y - this.bird.y - this.bird.h / 2) * Math.min(1, dt * 8);
     } else {
-      if (dx > 0) this.bird.x += move * 0.95;
+      if (dx > 0) this.bird.x += move * 1.15;
       if (dx < 0) this.bird.x -= move * 0.58;
       this.bird.y += dy * move;
     }
     this.bird.direcao = "direita";
-    this.bird.x = Phaser.Math.Clamp(this.bird.x, 170, W * 0.58);
+    this.bird.x = Phaser.Math.Clamp(this.bird.x, 170, W * 0.68);
     this.bird.y = Phaser.Math.Clamp(this.bird.y, this.safeTopY(), H - this.bird.h - 56);
+    const frontProgress = Phaser.Math.Clamp((this.bird.x - W * 0.48) / (W * 0.2), 0, 1);
+    this.forwardBoost = dx > 0 ? 360 * frontProgress : 0;
     this.bird.wing += dt * 15;
     this.bird.hurt = Math.max(0, this.bird.hurt - dt);
   }
@@ -471,7 +521,7 @@ class CacauScene extends Phaser.Scene {
   moveRoutePoint(point, dt) {
     if (!point) return;
     point.phase += dt * point.floatSpeed;
-    point.baseX -= point.speed * this.gameSpeed() * dt;
+    point.baseX -= (point.speed * this.gameSpeed() + this.forwardBoost) * dt;
     point.x = point.baseX;
     point.y = point.baseY + Math.sin(point.phase) * point.floatAmp;
 
@@ -486,7 +536,7 @@ class CacauScene extends Phaser.Scene {
     this.playSound("hit");
     this.addPop(Math.max(40, point.x + point.w), point.y + point.h / 2, 0xee5d5a, 10);
     if (this.route.state === "pickup") {
-      this.route.nursery = this.makeMovingRoutePoint({ x: 0, y: Phaser.Math.Between(136, 420), w: 184, h: 138, label: "Berçário" }, 0);
+      this.route.nursery = this.makeMovingRoutePoint({ x: 0, y: Phaser.Math.Between(136, 420), w: 184, h: 138, label: "Casinha" }, 0);
     } else if (this.route.order) {
       this.route.destination = this.makeMovingRoutePoint({ ...this.route.order.home, label: this.route.order.destination }, 1);
     }
@@ -499,7 +549,9 @@ class CacauScene extends Phaser.Scene {
     this.timers.coin -= dt;
     this.timers.heart -= dt;
     this.timers.bolt -= dt;
-    if (this.timers.cloud <= 0) { this.spawnCloud(); this.timers.cloud = Math.max(0.38, Phaser.Math.FloatBetween(0.82, 1.22) - this.level * 0.06); }
+    if (this.timers.cloud <= 0) {
+      this.timers.cloud = 999;
+    }
     if (this.timers.hazard <= 0) { this.spawnHazard(); this.timers.hazard = Math.max(0.52, Phaser.Math.FloatBetween(1.05, 1.78) - this.level * 0.065); }
     if (this.timers.star <= 0) { this.spawnStar(); this.timers.star = Phaser.Math.FloatBetween(0.95, 1.55); }
     if (this.timers.coin <= 0) { this.spawnCoin(); this.timers.coin = Phaser.Math.FloatBetween(1.25, 1.95); }
@@ -509,7 +561,7 @@ class CacauScene extends Phaser.Scene {
 
   moveList(items, dt) {
     for (const item of items) {
-      item.x -= item.speed * dt;
+      item.x -= (item.speed + this.forwardBoost) * dt;
       if (item.spin !== undefined) item.spin += dt * 5;
       if (item.smart) {
         const targetY = this.bird.y + this.bird.h * 0.5 - item.h * 0.5;
@@ -667,6 +719,25 @@ class CacauScene extends Phaser.Scene {
     persistSave();
     finalScore.textContent = `${this.score} pontos`;
     rankLine.textContent = `Recorde: ${save.best} | Estrelas guardadas: ${save.totalCoins}`;
+    if (!this.sessionSubmitted) {
+      this.sessionSubmitted = true;
+      const durationSeconds = Math.max(1, Math.round((Date.now() - this.sessionStartedAt) / 1000));
+      window.CacauApp?.submitGameResult?.({
+        score: this.score,
+        levelReached: this.level,
+        coinsEarned: this.coins,
+        deliveries: this.deliveries,
+        durationSeconds
+      }).then((cloud) => {
+        if (!cloud?.progress) return;
+        save.best = Math.max(save.best, cloud.progress.best_score || 0);
+        save.totalCoins = Math.max(save.totalCoins, cloud.progress.coins || 0);
+        persistSave();
+        rankLine.textContent = `Recorde: ${save.best} | Nuvem: ${save.totalCoins} moedas | +${cloud.awarded.coins} moedas, +${cloud.awarded.xp} XP`;
+        renderShop();
+        this.updateHud();
+      });
+    }
     this.updateHud();
     renderShop();
     gameOverPanel.classList.remove("hidden");
@@ -704,12 +775,12 @@ class CacauScene extends Phaser.Scene {
     this.g.clear();
     this.fx.clear();
     this.drawWorld();
+    for (const cloud of this.clouds) this.drawCloud(cloud);
     this.drawRoutePoints();
     for (const star of this.stars) this.drawStar(star);
     for (const coin of this.coinsOnMap) this.drawCoin(coin);
     for (const heart of this.hearts) this.drawHeart(heart);
     for (const bolt of this.energyBolts) this.drawEnergyBolt(bolt);
-    for (const cloud of this.clouds) this.drawCloud(cloud);
     for (const hazard of this.hazards) this.drawHazard(hazard);
     for (const sparkle of this.sparkles) this.drawSparkle(sparkle);
     this.drawCacau();
@@ -737,9 +808,6 @@ class CacauScene extends Phaser.Scene {
     this.g.fillRect(0, H - 66, W, 66);
     this.g.fillStyle(0x21784f);
     for (let x = -(fast % 44); x < W + 60; x += 44) this.triangle(x, H - 60, x + 20, H - 112, x + 42, H - 60);
-    this.g.fillStyle(0xffffff, 0.82);
-    this.g.fillRoundedRect(20, 92, 210, 34, 17);
-    this.drawText(scene.name.toUpperCase(), 36, 111, "14px", "#197a62", "left");
     this.drawRainbowRibbon(fast);
   }
 
@@ -758,14 +826,13 @@ class CacauScene extends Phaser.Scene {
   }
 
   drawBackgroundClouds(offset, alpha, baseY) {
-    this.g.fillStyle(0xffffff, alpha);
     for (let i = 0; i < 6; i += 1) {
       const x = ((i * 260 - offset) % (W + 260)) - 120;
       const y = baseY + Math.sin(this.worldTime * 0.7 + i) * 12 + (i % 2) * 44;
-      this.g.fillEllipse(x, y, 96, 40);
-      this.g.fillEllipse(x + 42, y - 8, 80, 50);
-      this.g.fillEllipse(x + 86, y, 96, 40);
-      this.g.fillRect(x, y - 2, 90, 24);
+      this.g.fillStyle(0xffffff, alpha * 0.72);
+      this.g.fillEllipse(x + 42, y + 5, 150, 34);
+      this.g.fillStyle(0xffffff, alpha * 0.92);
+      this.g.fillEllipse(x + 42, y - 8, 82, 42);
     }
   }
 
@@ -909,8 +976,6 @@ class CacauScene extends Phaser.Scene {
     this.g.fillStyle(0x7a4b2b);
     this.g.fillRect(730, H - 115, 12, 52);
     this.g.fillRect(838, H - 115, 12, 52);
-    this.g.lineStyle(6, 0xffffff);
-    this.g.strokeCircle(214, H - 126, 38);
     this.g.fillStyle(0xf472b6);
     this.g.fillCircle(1010, H - 132, 22);
   }
@@ -975,25 +1040,130 @@ class CacauScene extends Phaser.Scene {
     const x = point.x;
     const y = point.y + bob;
     const cx = x + point.w / 2;
-    const cy = y + 72;
+    const baseY = y + point.h - 2;
+    const houseW = 132 * pulse;
+    const houseH = 92 * pulse;
+    const bodyX = cx - houseW / 2;
+    const bodyY = baseY - houseH;
+    const roofY = bodyY - 43 * pulse;
 
     this.g.fillStyle(0x173047, 0.16);
-    this.g.fillEllipse(cx, y + point.h + 8, point.w * 0.78, 18);
-    this.g.fillStyle(0xe0f7ff, active ? 0.98 : 0.72);
-    this.g.lineStyle(active ? 5 : 3, this.route.order.familyColor, active ? 1 : 0.45);
-    this.g.fillRoundedRect(x, y, point.w, point.h, 24);
-    this.g.strokeRoundedRect(x, y, point.w, point.h, 24);
-    this.g.fillStyle(this.route.order.color, 0.18);
-    this.g.fillCircle(cx, cy, 64 * pulse);
-    this.g.fillStyle(0xffffff, 0.68);
-    this.g.fillCircle(cx - 33, cy - 30, 18);
-    this.g.fillCircle(cx + 38, cy - 36, 12);
-    this.drawBabyAnimalPortrait(this.route.order.id, cx, cy + 2, pulse);
+    this.g.fillEllipse(cx, baseY + 9, point.w * 0.76, 18);
+
+    this.g.fillStyle(0xfff4bd, 0.98);
+    this.g.lineStyle(3, 0xc9a45e, 0.9);
+    this.g.fillRect(bodyX, bodyY, houseW, houseH);
+    this.g.strokeRect(bodyX, bodyY, houseW, houseH);
+
+    this.g.lineStyle(3, 0xc9a45e, 0.72);
+    for (let plankY = bodyY + 17 * pulse; plankY < bodyY + houseH - 5; plankY += 18 * pulse) {
+      this.g.lineBetween(bodyX + 6 * pulse, plankY, bodyX + houseW - 6 * pulse, plankY);
+    }
+    this.g.lineStyle(4, 0xc9a45e, 0.82);
+    this.g.lineBetween(bodyX + 17 * pulse, bodyY + 16 * pulse, bodyX + 17 * pulse, baseY - 8 * pulse);
+    this.g.lineBetween(bodyX + houseW - 17 * pulse, bodyY + 16 * pulse, bodyX + houseW - 17 * pulse, baseY - 8 * pulse);
+
+    this.g.fillStyle(0xff4a3a);
+    this.triangle(bodyX - 14 * pulse, bodyY + 7 * pulse, cx, roofY, bodyX + houseW + 14 * pulse, bodyY + 7 * pulse);
+    this.g.lineStyle(7 * pulse, 0xff3f32, 0.98);
+    this.g.lineBetween(bodyX - 9 * pulse, bodyY + 6 * pulse, cx, roofY + 3 * pulse);
+    this.g.lineBetween(cx, roofY + 3 * pulse, bodyX + houseW + 9 * pulse, bodyY + 6 * pulse);
+    this.g.fillStyle(0xf9d989, 0.92);
+    this.triangle(cx - 29 * pulse, bodyY + 1 * pulse, cx, roofY + 18 * pulse, cx + 29 * pulse, bodyY + 1 * pulse);
+
+    const doorW = 58 * pulse;
+    const doorH = 65 * pulse;
+    const doorX = cx - doorW / 2;
+    const doorY = baseY - doorH;
+    this.g.fillStyle(0x173047, 0.94);
+    this.g.fillRoundedRect(doorX, doorY, doorW, doorH, 5 * pulse);
+    this.g.fillStyle(0x000000, 0.18);
+    this.g.fillRoundedRect(doorX + 5 * pulse, doorY + 5 * pulse, doorW - 10 * pulse, doorH - 5 * pulse, 4 * pulse);
+
+    this.drawPickupAnimalInHouse(this.route.order.id, cx, baseY - 24 * pulse, 0.55 * pulse);
+
     this.g.fillStyle(0xffffff, 0.94);
-    this.g.fillRoundedRect(x + 24, y + 8, point.w - 48, 26, 13);
-    this.g.lineStyle(2, this.route.order.familyColor, 0.45);
-    this.g.strokeRoundedRect(x + 24, y + 8, point.w - 48, 26, 13);
-    this.drawText(this.route.order.name.replace("bebe ", ""), cx, y + 13, "13px", "#173047", "center");
+    this.g.fillRoundedRect(cx - 39 * pulse, bodyY + 9 * pulse, 78 * pulse, 18 * pulse, 9 * pulse);
+    this.g.lineStyle(2, this.route.order.familyColor, 0.5);
+    this.g.strokeRoundedRect(cx - 39 * pulse, bodyY + 9 * pulse, 78 * pulse, 18 * pulse, 9 * pulse);
+    this.drawText(this.route.order.name.replace("bebe ", ""), cx, bodyY + 10 * pulse, `${11 * pulse}px`, "#173047", "center");
+  }
+
+  drawPickupAnimalInHouse(id, cx, footY, scale = 1) {
+    const data = {
+      panda: { body: 0xf8fafc, head: 0xffffff, accent: 0x172033, belly: 0xf8fafc, nose: 0x172033, eye: 0x1d4ed8, ear: 0x172033 },
+      puppy: { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 },
+      kitten: { body: 0xcbd5e1, head: 0xe2e8f0, accent: 0x64748b, belly: 0xffffff, nose: 0xec4899, eye: 0x0ea5e9, ear: 0x94a3b8 },
+      bunny: { body: 0xf9a8d4, head: 0xffd6e7, accent: 0xf472b6, belly: 0xffffff, nose: 0xdb2777, eye: 0x2563eb, ear: 0xf472b6 },
+      fox: { body: 0xfb923c, head: 0xffa85c, accent: 0xc2410c, belly: 0xfff7ed, nose: 0x172033, eye: 0x0f766e, ear: 0xc2410c },
+      koala: { body: 0xbfdbfe, head: 0xdbeafe, accent: 0x64748b, belly: 0xffffff, nose: 0x334155, eye: 0x2563eb, ear: 0x94a3b8 },
+      turtle: { body: 0x86efac, head: 0xbbf7d0, accent: 0x15803d, belly: 0xfef3c7, nose: 0x166534, eye: 0x2563eb, ear: 0x22c55e },
+      duckling: { body: 0xfde68a, head: 0xfef08a, accent: 0xf59e0b, belly: 0xfffbeb, nose: 0xf97316, eye: 0x2563eb, ear: 0xfacc15 }
+    }[id] || { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 };
+    const bodyY = footY - 19 * scale;
+    const headY = footY - 47 * scale;
+    const blink = Math.sin(this.worldTime * 3.1) > 0.965;
+    const look = Math.sin(this.worldTime * 1.7) * 1.1 * scale;
+
+    this.g.fillStyle(data.body);
+    this.g.lineStyle(3 * scale, data.accent, 0.9);
+    this.g.fillEllipse(cx, bodyY, 38 * scale, 42 * scale);
+    this.g.strokeEllipse(cx, bodyY, 38 * scale, 42 * scale);
+    this.g.fillStyle(data.belly);
+    this.g.fillEllipse(cx, bodyY + 8 * scale, 19 * scale, 24 * scale);
+
+    this.g.fillStyle(data.ear);
+    if (id === "bunny") {
+      this.g.fillEllipse(cx - 13 * scale, headY - 25 * scale, 9 * scale, 34 * scale);
+      this.g.fillEllipse(cx + 13 * scale, headY - 25 * scale, 9 * scale, 34 * scale);
+      this.g.fillStyle(0xffe4ef);
+      this.g.fillEllipse(cx - 13 * scale, headY - 25 * scale, 4 * scale, 24 * scale);
+      this.g.fillEllipse(cx + 13 * scale, headY - 25 * scale, 4 * scale, 24 * scale);
+    } else if (id === "kitten" || id === "fox") {
+      this.triangle(cx - 21 * scale, headY - 11 * scale, cx - 13 * scale, headY - 32 * scale, cx - 5 * scale, headY - 11 * scale);
+      this.triangle(cx + 21 * scale, headY - 11 * scale, cx + 13 * scale, headY - 32 * scale, cx + 5 * scale, headY - 11 * scale);
+      this.g.fillStyle(0xffd6e7, 0.82);
+      this.triangle(cx - 17 * scale, headY - 13 * scale, cx - 13 * scale, headY - 23 * scale, cx - 9 * scale, headY - 13 * scale);
+      this.triangle(cx + 17 * scale, headY - 13 * scale, cx + 13 * scale, headY - 23 * scale, cx + 9 * scale, headY - 13 * scale);
+    } else {
+      this.g.fillCircle(cx - 17 * scale, headY - 13 * scale, 9 * scale);
+      this.g.fillCircle(cx + 17 * scale, headY - 13 * scale, 9 * scale);
+    }
+
+    this.g.fillStyle(data.head);
+    this.g.lineStyle(3 * scale, data.accent, 0.9);
+    this.g.fillEllipse(cx, headY, 43 * scale, 36 * scale);
+    this.g.strokeEllipse(cx, headY, 43 * scale, 36 * scale);
+
+    if (blink) {
+      this.g.lineStyle(3 * scale, 0x173047, 0.85);
+      this.g.lineBetween(cx - 14 * scale, headY - 3 * scale, cx - 6 * scale, headY - 3 * scale);
+      this.g.lineBetween(cx + 6 * scale, headY - 3 * scale, cx + 14 * scale, headY - 3 * scale);
+    } else {
+      for (const side of [-1, 1]) {
+        const eyeX = cx + side * 10 * scale;
+        this.g.fillStyle(0xffffff);
+        this.g.fillCircle(eyeX, headY - 4 * scale, 7 * scale);
+        this.g.fillStyle(data.eye);
+        this.g.fillCircle(eyeX + look, headY - 3 * scale, 3.7 * scale);
+        this.g.fillStyle(0x07111f);
+        this.g.fillCircle(eyeX + look, headY - 3 * scale, 2.2 * scale);
+        this.g.fillStyle(0xffffff);
+        this.g.fillCircle(eyeX + look + 1.5 * scale, headY - 5 * scale, 1.2 * scale);
+      }
+    }
+
+    this.g.fillStyle(data.nose);
+    this.g.fillEllipse(cx, headY + 8 * scale, 7 * scale, 5 * scale);
+    this.g.lineStyle(2 * scale, data.nose, 0.85);
+    this.g.lineBetween(cx, headY + 11 * scale, cx, headY + 16 * scale);
+    this.g.beginPath();
+    this.g.arc(cx - 4 * scale, headY + 15 * scale, 4 * scale, 0.1, Math.PI - 0.1);
+    this.g.arc(cx + 4 * scale, headY + 15 * scale, 4 * scale, 0.1, Math.PI - 0.1);
+    this.g.strokePath();
+    this.g.fillStyle(data.body);
+    this.g.fillCircle(cx - 12 * scale, footY - 4 * scale, 5 * scale);
+    this.g.fillCircle(cx + 12 * scale, footY - 4 * scale, 5 * scale);
   }
 
   drawBabyAnimalPortrait(id, cx, cy, pulse = 1) {
@@ -1128,16 +1298,136 @@ class CacauScene extends Phaser.Scene {
 
   drawDestinationHouse(point) {
     const active = this.route.state === "delivery";
-    this.g.fillStyle(0xfffdf5, active ? 1 : 0.62);
-    this.g.lineStyle(active ? 5 : 3, 0x197a62, active ? 1 : 0.45);
-    this.g.fillRoundedRect(point.x, point.y + 22, point.w, point.h - 22, 18);
-    this.g.strokeRoundedRect(point.x, point.y + 22, point.w, point.h - 22, 18);
-    this.g.fillStyle(this.route.order.familyColor);
-    this.triangle(point.x - 8, point.y + 32, point.x + point.w / 2, point.y - 12, point.x + point.w + 8, point.y + 32);
-    this.drawText("PONTO B", point.x + point.w / 2, point.y + 45, "15px", "#197a62", "center");
-    this.drawText(this.route.order.destination, point.x + point.w / 2, point.y + 71, "15px", "#173047", "center");
-    this.drawText(`pedido: ${this.route.order.requiredColor}`, point.x + point.w / 2, point.y + 91, "12px", "#173047", "center");
-    this.drawText(animalEmoji[this.route.order.id], point.x + point.w / 2, point.y + 114, "26px", "#173047", "center");
+    const pulse = active ? 1 + Math.sin(this.worldTime * 4.2) * 0.025 : 1;
+    const cx = point.x + point.w / 2;
+    const baseY = point.y + point.h + 6;
+    const houseW = point.w * 1.42 * pulse;
+    const houseH = Math.max(150, point.h * 1.3) * pulse;
+    const bodyX = cx - houseW / 2;
+    const bodyY = baseY - houseH;
+    const roofY = bodyY - 45 * pulse;
+    const doorW = houseW * 0.56;
+    const doorH = houseH * 0.62;
+    const doorX = cx - doorW / 2;
+    const doorY = baseY - doorH;
+    const signText = this.route.order.destination.replace("Familia ", "FAM. ").toUpperCase();
+
+    this.g.fillStyle(0x173047, 0.17);
+    this.g.fillEllipse(cx, baseY + 10, houseW * 0.92, 18);
+    if (active) {
+      this.g.fillStyle(0xfff7b8, 0.24);
+      this.g.fillEllipse(cx, bodyY + houseH * 0.52, houseW * 1.22, houseH * 1.18);
+    }
+
+    this.g.fillStyle(0xfff4bd, 0.98);
+    this.g.lineStyle(3, 0xc9a45e, 0.9);
+    this.g.fillRect(bodyX, bodyY, houseW, houseH);
+    this.g.strokeRect(bodyX, bodyY, houseW, houseH);
+    this.g.lineStyle(3, 0xc9a45e, 0.72);
+    for (let plankY = bodyY + 18 * pulse; plankY < bodyY + houseH - 8; plankY += 18 * pulse) {
+      this.g.lineBetween(bodyX + 8 * pulse, plankY, bodyX + houseW - 8 * pulse, plankY);
+    }
+
+    this.g.fillStyle(0xff4a3a);
+    this.triangle(bodyX - 17 * pulse, bodyY + 8 * pulse, cx, roofY, bodyX + houseW + 17 * pulse, bodyY + 8 * pulse);
+    this.g.fillStyle(0xd9362f, 0.46);
+    this.triangle(cx, roofY, bodyX + houseW + 17 * pulse, bodyY + 8 * pulse, bodyX + houseW * 0.52, bodyY + 8 * pulse);
+    this.g.lineStyle(7 * pulse, 0xff3f32, 0.98);
+    this.g.lineBetween(bodyX - 12 * pulse, bodyY + 7 * pulse, cx, roofY + 3 * pulse);
+    this.g.lineBetween(cx, roofY + 3 * pulse, bodyX + houseW + 12 * pulse, bodyY + 7 * pulse);
+
+    this.g.fillStyle(0xf9d989, 0.92);
+    this.triangle(cx - 32 * pulse, bodyY + 1 * pulse, cx, roofY + 18 * pulse, cx + 32 * pulse, bodyY + 1 * pulse);
+    this.g.lineStyle(2, 0xb98c42, 0.65);
+    this.g.lineBetween(cx - 16 * pulse, bodyY - 7 * pulse, cx + 16 * pulse, bodyY + 9 * pulse);
+    this.g.lineBetween(cx + 16 * pulse, bodyY - 7 * pulse, cx - 16 * pulse, bodyY + 9 * pulse);
+
+    this.g.fillStyle(0x173047, 0.94);
+    this.g.fillRoundedRect(doorX, doorY, doorW, doorH, 9 * pulse);
+    this.g.fillStyle(0x000000, 0.18);
+    this.g.fillRoundedRect(doorX + 5 * pulse, doorY + 5 * pulse, doorW - 10 * pulse, doorH - 5 * pulse, 7 * pulse);
+    this.drawFamilyParentInHouse(this.route.order.id, cx - 30 * pulse, baseY - 12 * pulse, 0.7 * pulse, -1);
+    this.drawFamilyParentInHouse(this.route.order.id, cx + 30 * pulse, baseY - 12 * pulse, 0.7 * pulse, 1);
+
+    this.g.fillStyle(0xfff8d7, 0.98);
+    this.g.lineStyle(2, 0xb98c42, 0.72);
+    this.g.fillRoundedRect(cx - 48 * pulse, bodyY + 14 * pulse, 96 * pulse, 22 * pulse, 7 * pulse);
+    this.g.strokeRoundedRect(cx - 48 * pulse, bodyY + 14 * pulse, 96 * pulse, 22 * pulse, 7 * pulse);
+    this.drawText(signText, cx, bodyY + 17 * pulse, `${10 * pulse}px`, "#8a5b32", "center");
+
+    this.drawFamilyFlowers(bodyX + 12 * pulse, baseY - 9 * pulse, pulse);
+    this.drawFamilyFlowers(bodyX + houseW - 12 * pulse, baseY - 9 * pulse, pulse);
+  }
+
+  drawFamilyParentInHouse(id, cx, footY, scale, faceSign = 1) {
+    const data = {
+      panda: { body: 0xf8fafc, head: 0xffffff, accent: 0x172033, belly: 0xf8fafc, nose: 0x172033, eye: 0x1d4ed8, ear: 0x172033 },
+      puppy: { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 },
+      kitten: { body: 0xcbd5e1, head: 0xe2e8f0, accent: 0x64748b, belly: 0xffffff, nose: 0xec4899, eye: 0x0ea5e9, ear: 0x94a3b8 },
+      bunny: { body: 0xf9a8d4, head: 0xffd6e7, accent: 0xf472b6, belly: 0xffffff, nose: 0xdb2777, eye: 0x2563eb, ear: 0xf472b6 },
+      fox: { body: 0xfb923c, head: 0xffa85c, accent: 0xc2410c, belly: 0xfff7ed, nose: 0x172033, eye: 0x0f766e, ear: 0xc2410c },
+      koala: { body: 0xbfdbfe, head: 0xdbeafe, accent: 0x64748b, belly: 0xffffff, nose: 0x334155, eye: 0x2563eb, ear: 0x94a3b8 },
+      turtle: { body: 0x86efac, head: 0xbbf7d0, accent: 0x15803d, belly: 0xfef3c7, nose: 0x166534, eye: 0x2563eb, ear: 0x22c55e },
+      duckling: { body: 0xfde68a, head: 0xfef08a, accent: 0xf59e0b, belly: 0xfffbeb, nose: 0xf97316, eye: 0x2563eb, ear: 0xfacc15 }
+    }[id] || { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 };
+    const bodyY = footY - 31 * scale;
+    const headY = footY - 72 * scale;
+
+    this.g.fillStyle(data.body);
+    this.g.lineStyle(3 * scale, data.accent, 0.9);
+    this.g.fillEllipse(cx, bodyY, 46 * scale, 66 * scale);
+    this.g.strokeEllipse(cx, bodyY, 46 * scale, 66 * scale);
+    this.g.fillStyle(data.belly);
+    this.g.fillEllipse(cx, bodyY + 9 * scale, 22 * scale, 36 * scale);
+
+    this.g.fillStyle(data.ear);
+    if (id === "bunny") {
+      this.g.fillEllipse(cx - 16 * scale, headY - 28 * scale, 10 * scale, 38 * scale);
+      this.g.fillEllipse(cx + 16 * scale, headY - 28 * scale, 10 * scale, 38 * scale);
+    } else if (id === "kitten" || id === "fox") {
+      this.triangle(cx - 24 * scale, headY - 11 * scale, cx - 15 * scale, headY - 35 * scale, cx - 5 * scale, headY - 12 * scale);
+      this.triangle(cx + 24 * scale, headY - 11 * scale, cx + 15 * scale, headY - 35 * scale, cx + 5 * scale, headY - 12 * scale);
+    } else {
+      this.g.fillCircle(cx - 19 * scale, headY - 13 * scale, 10 * scale);
+      this.g.fillCircle(cx + 19 * scale, headY - 13 * scale, 10 * scale);
+    }
+
+    this.g.fillStyle(data.head);
+    this.g.lineStyle(3 * scale, data.accent, 0.9);
+    this.g.fillEllipse(cx, headY, 48 * scale, 40 * scale);
+    this.g.strokeEllipse(cx, headY, 48 * scale, 40 * scale);
+    this.g.fillStyle(0xffffff);
+    this.g.fillCircle(cx - 11 * scale, headY - 4 * scale, 6 * scale);
+    this.g.fillCircle(cx + 11 * scale, headY - 4 * scale, 6 * scale);
+    this.g.fillStyle(0x07111f);
+    this.g.fillCircle(cx - 10 * scale + faceSign, headY - 3 * scale, 2.8 * scale);
+    this.g.fillCircle(cx + 12 * scale + faceSign, headY - 3 * scale, 2.8 * scale);
+    this.g.fillStyle(data.nose);
+    this.g.fillEllipse(cx, headY + 8 * scale, 7 * scale, 5 * scale);
+    this.g.lineStyle(2 * scale, data.nose, 0.86);
+    this.g.beginPath();
+    this.g.arc(cx - 4 * scale, headY + 14 * scale, 4 * scale, 0.1, Math.PI - 0.1);
+    this.g.arc(cx + 4 * scale, headY + 14 * scale, 4 * scale, 0.1, Math.PI - 0.1);
+    this.g.strokePath();
+  }
+
+  drawFamilyFlowers(cx, baseY, scale) {
+    this.g.fillStyle(0xb96b35);
+    this.g.fillRect(cx - 10 * scale, baseY - 16 * scale, 20 * scale, 16 * scale);
+    this.g.fillStyle(0x8bcf67);
+    this.g.fillEllipse(cx - 6 * scale, baseY - 19 * scale, 10 * scale, 16 * scale);
+    this.g.fillEllipse(cx + 6 * scale, baseY - 20 * scale, 10 * scale, 16 * scale);
+    for (const flower of [[-8, -30], [5, -34], [12, -25]]) {
+      const x = cx + flower[0] * scale;
+      const y = baseY + flower[1] * scale;
+      this.g.fillStyle(0xff6f61);
+      this.g.fillCircle(x - 3 * scale, y, 4 * scale);
+      this.g.fillCircle(x + 3 * scale, y, 4 * scale);
+      this.g.fillCircle(x, y - 3 * scale, 4 * scale);
+      this.g.fillCircle(x, y + 3 * scale, 4 * scale);
+      this.g.fillStyle(0xfff7b8);
+      this.g.fillCircle(x, y, 2 * scale);
+    }
   }
 
   drawCacau() {
@@ -1272,23 +1562,13 @@ class CacauScene extends Phaser.Scene {
   }
 
   drawCloud(cloud) {
-    const bob = Math.sin(this.worldTime * 4 + cloud.phase) * 4;
+    const bob = Math.sin(this.worldTime * 2 + cloud.phase) * 3;
     const x = cloud.x;
     const y = cloud.y + bob;
-    this.g.fillStyle(0xdbeafe, 0.42);
-    this.g.fillEllipse(x + cloud.w * 0.48, y + cloud.h * 0.74, cloud.w * 0.9, cloud.h * 0.28);
-    this.g.fillStyle(0xffffff, 0.98);
-    this.g.fillEllipse(x + cloud.w * 0.22, y + cloud.h * 0.6, cloud.w * 0.44, cloud.h * 0.68);
-    this.g.fillEllipse(x + cloud.w * 0.46, y + cloud.h * 0.42, cloud.w * 0.56, cloud.h * 0.88);
-    this.g.fillEllipse(x + cloud.w * 0.7, y + cloud.h * 0.62, cloud.w * 0.48, cloud.h * 0.64);
-    this.g.fillRoundedRect(x + cloud.w * 0.15, y + cloud.h * 0.52, cloud.w * 0.67, cloud.h * 0.34, cloud.h * 0.17);
-    this.g.fillStyle(0x9fb6ce, 0.72);
-    this.g.fillCircle(x + cloud.w * 0.38, y + cloud.h * 0.52, 3.5);
-    this.g.fillCircle(x + cloud.w * 0.58, y + cloud.h * 0.52, 3.5);
-    this.g.lineStyle(2, 0x9fb6ce, 0.56);
-    this.g.beginPath();
-    this.g.arc(x + cloud.w * 0.48, y + cloud.h * 0.58, 8, 0.12, Math.PI - 0.12);
-    this.g.strokePath();
+    this.g.fillStyle(0xffffff, 0.24);
+    this.g.fillEllipse(x + cloud.w * 0.5, y + cloud.h * 0.68, cloud.w * 0.9, cloud.h * 0.24);
+    this.g.fillStyle(0xffffff, 0.38);
+    this.g.fillEllipse(x + cloud.w * 0.48, y + cloud.h * 0.5, cloud.w * 0.6, cloud.h * 0.5);
   }
 
   drawHazard(hazard) {
@@ -1311,23 +1591,33 @@ class CacauScene extends Phaser.Scene {
   }
 
   drawBalloon(balloon) {
-    this.g.fillStyle(0xf472b6);
+    this.g.fillStyle(0x7f1d1d, 0.24);
+    this.g.fillEllipse(balloon.x + 30, balloon.y + 44, 62, 82);
+    this.g.lineStyle(4, 0x7f1d1d, 0.9);
+    this.g.fillStyle(0xef4444);
     this.g.fillEllipse(balloon.x + 27, balloon.y + 28, 50, 62);
-    this.g.fillStyle(0xffffff, 0.42);
+    this.g.strokeEllipse(balloon.x + 27, balloon.y + 28, 50, 62);
+    this.g.fillStyle(0xffc857);
+    this.g.fillTriangle(balloon.x + 27, balloon.y + 7, balloon.x + 39, balloon.y + 36, balloon.x + 17, balloon.y + 36);
+    this.g.fillStyle(0xffffff, 0.52);
     this.g.fillEllipse(balloon.x + 18, balloon.y + 20, 14, 26);
     this.g.lineStyle(2, 0x7a4b2b);
     this.g.lineBetween(balloon.x + 18, balloon.y + 56, balloon.x + 24, balloon.y + 79);
     this.g.lineBetween(balloon.x + 36, balloon.y + 56, balloon.x + 30, balloon.y + 79);
-    this.g.fillStyle(0xf4c27a);
+    this.g.fillStyle(0x7a4b2b);
     this.g.fillRect(balloon.x + 18, balloon.y + 76, 18, 12);
+    this.g.fillStyle(0xffffff);
+    this.g.fillRect(balloon.x + 25, balloon.y + 76, 4, 8);
   }
 
   drawKite(kite) {
     const bob = Math.sin(this.worldTime * 4 + kite.phase) * 5;
     const cx = kite.x + 34;
     const cy = kite.y + 28 + bob;
-    this.g.fillStyle(0xff5ca8);
-    this.g.lineStyle(3, 0x9f1239);
+    this.g.fillStyle(0x7f1d1d, 0.22);
+    this.g.fillEllipse(cx + 4, cy + 8, 70, 74);
+    this.g.fillStyle(0xef4444);
+    this.g.lineStyle(4, 0x7f1d1d);
     this.g.beginPath();
     this.g.moveTo(cx, cy - 28);
     this.g.lineTo(cx + 28, cy);
@@ -1336,6 +1626,13 @@ class CacauScene extends Phaser.Scene {
     this.g.closePath();
     this.g.fillPath();
     this.g.strokePath();
+    this.g.fillStyle(0xffc857);
+    this.g.beginPath();
+    this.g.moveTo(cx, cy - 18);
+    this.g.lineTo(cx + 18, cy);
+    this.g.lineTo(cx, cy + 20);
+    this.g.closePath();
+    this.g.fillPath();
     this.g.lineStyle(2, 0xffffff, 0.75);
     this.g.lineBetween(cx, cy - 24, cx, cy + 26);
     this.g.lineBetween(cx - 22, cy, cx + 22, cy);
@@ -1567,3 +1864,7 @@ renderShop();
 updatePawHud(null);
 setGameUiState("menu");
 pauseButton.classList.add("hidden");
+
+window.CacauGame = {
+  applyCloudProgress
+};
