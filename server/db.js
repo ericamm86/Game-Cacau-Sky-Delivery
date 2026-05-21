@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const dataDir = path.join(__dirname, "..", "data");
+const dataDir = process.env.VERCEL ? path.join("/tmp", "cacau-sky-delivery") : path.join(__dirname, "..", "data");
 const dbPath = process.env.DB_PATH || path.join(dataDir, "cacau-sky.sqlite");
 const schemaPath = path.join(__dirname, "schema.sql");
 

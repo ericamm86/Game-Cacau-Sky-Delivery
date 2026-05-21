@@ -235,7 +235,11 @@ app.use(express.static(publicRoot, {
   }
 }));
 
-app.listen(PORT, () => {
-  console.log(`Cacau Sky Delivery online: http://localhost:${PORT}`);
-  console.log(`Banco SQLite: ${process.env.DB_PATH || path.join(publicRoot, "data", "cacau-sky.sqlite")}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Cacau Sky Delivery online: http://localhost:${PORT}`);
+    console.log(`Banco SQLite: ${process.env.DB_PATH || path.join(publicRoot, "data", "cacau-sky.sqlite")}`);
+  });
+}
+
+module.exports = app;

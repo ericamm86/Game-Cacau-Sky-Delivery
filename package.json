@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/app.js",
     "dev": "node server/app.js",
-    "check": "node --check app.js && node --check game.js && node --check server/app.js && node --check server/db.js && node --check server/security.js"
+    "check": "node --check app.js && node --check game.js && node --check api/index.js && node --check server/app.js && node --check server/db.js && node --check server/security.js"
   },
   "repository": {
     "type": "git",
