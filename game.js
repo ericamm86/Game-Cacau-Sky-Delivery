@@ -6,6 +6,8 @@ const energyValue = document.getElementById("energyValue");
 const coinValue = document.getElementById("coinValue");
 const bestValue = document.getElementById("bestValue");
 const pawBag = document.getElementById("pawBag");
+const bagPanel = document.querySelector(".bag-paws");
+const bagLabel = document.querySelector(".bag-label");
 const missionText = document.getElementById("missionText");
 const gameRoot = document.getElementById("gameRoot");
 const startPanel = document.getElementById("startPanel");
@@ -68,6 +70,7 @@ const confettiColors = [0xff5ca8, 0xffc857, 0x45d483, 0x4db7ff, 0xb58cff, 0xff8a
 
 let save = loadSave();
 let gameScene = null;
+let pawHudState = "";
 
 function loadSave() {
   try {
@@ -93,7 +96,11 @@ function persistSave() {
 function applyCloudProgress(progress) {
   if (!progress) return;
   save.best = Math.max(save.best || 0, progress.best_score || 0);
-  save.totalCoins = Math.max(save.totalCoins || 0, progress.coins || 0);
+  save.totalCoins = progress.coins || 0;
+  save.outfit = progress.outfit || "classic";
+  save.unlocked = Array.isArray(progress.unlockedOutfits) && progress.unlockedOutfits.length
+    ? progress.unlockedOutfits
+    : ["classic"];
   persistSave();
   renderShop();
   if (gameScene) gameScene.updateHud();
@@ -101,6 +108,12 @@ function applyCloudProgress(progress) {
 
 function updatePawHud(carrying) {
   const puppyCount = carrying?.kind === "Bebe" ? 1 : 0;
+  const nextState = carrying ? `${carrying.id}:${carrying.name}` : "empty";
+  if (nextState === pawHudState) return;
+  pawHudState = nextState;
+  bagPanel?.classList.toggle("is-carrying", Boolean(carrying));
+  if (bagLabel) bagLabel.textContent = carrying ? `Levando ${carrying.name.replace("bebe ", "")}` : "Bolsa vazia";
+  bagPanel?.setAttribute("aria-label", carrying ? `Bolsa de entrega levando ${carrying.name}` : "Bolsa de entrega vazia");
   pawBag.innerHTML = "";
   for (let i = 0; i < bagCapacity; i += 1) {
     const paw = document.createElement("span");
@@ -108,6 +121,11 @@ function updatePawHud(carrying) {
     paw.textContent = carrying ? animalEmoji[carrying.id] : String.fromCodePoint(0x1f43e);
     pawBag.appendChild(paw);
   }
+}
+
+function isTypingTarget(target) {
+  const tagName = target?.tagName?.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select" || target?.isContentEditable;
 }
 
 function rectsOverlap(a, b) {
@@ -127,26 +145,30 @@ function renderShop() {
     button.type = "button";
     button.className = `shop-item${active ? " active" : ""}`;
     button.innerHTML = `<strong>${outfit.name}</strong><small>${unlocked ? (active ? "Em uso" : "Selecionar") : `${outfit.price} estrelas`}</small>`;
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       if (!unlocked) {
         if (save.totalCoins < outfit.price) {
           shopStatus.textContent = "A Cacau ainda precisa de mais estrelas.";
           return;
         }
-        save.totalCoins -= outfit.price;
-        save.unlocked.push(outfit.id);
       }
-      save.outfit = outfit.id;
-      persistSave();
-      renderShop();
-      gameScene?.updateHud();
+      button.disabled = true;
+      shopStatus.textContent = "Salvando look na nuvem...";
+      const cloud = await window.CacauApp?.saveOutfit?.(outfit.id);
+      if (cloud?.progress) {
+        applyCloudProgress(cloud.progress);
+        shopStatus.textContent = `Look ${outfit.name} salvo na nuvem.`;
+      } else {
+        shopStatus.textContent = "Entre na conta para salvar looks.";
+        button.disabled = false;
+      }
     });
     shopGrid.appendChild(button);
   }
 }
 
 function setGameUiState(state) {
-  gameRoot.classList.remove("is-menu", "is-playing", "is-paused", "is-ended", "is-shop");
+  gameRoot.classList.remove("is-auth", "is-menu", "is-playing", "is-paused", "is-ended", "is-shop");
   gameRoot.classList.add(`is-${state}`);
 }
 
@@ -203,18 +225,9 @@ class CacauScene extends Phaser.Scene {
       a: Phaser.Input.Keyboard.KeyCodes.A,
       s: Phaser.Input.Keyboard.KeyCodes.S,
       d: Phaser.Input.Keyboard.KeyCodes.D
-    });
-    this.input.keyboard.addCapture([
-      Phaser.Input.Keyboard.KeyCodes.UP,
-      Phaser.Input.Keyboard.KeyCodes.DOWN,
-      Phaser.Input.Keyboard.KeyCodes.LEFT,
-      Phaser.Input.Keyboard.KeyCodes.RIGHT,
-      Phaser.Input.Keyboard.KeyCodes.W,
-      Phaser.Input.Keyboard.KeyCodes.A,
-      Phaser.Input.Keyboard.KeyCodes.S,
-      Phaser.Input.Keyboard.KeyCodes.D
-    ]);
+    }, false);
     const updateKeyState = (event, isDown) => {
+      if (isTypingTarget(event.target)) return;
       const key = event.key.toLowerCase();
       if (key === "arrowup" || key === "w") this.keyState.up = isDown;
       else if (key === "arrowdown" || key === "s") this.keyState.down = isDown;
@@ -230,6 +243,17 @@ class CacauScene extends Phaser.Scene {
       this.keyState.down = false;
       this.keyState.left = false;
       this.keyState.right = false;
+    });
+    window.addEventListener("focusin", (event) => {
+      if (!isTypingTarget(event.target)) return;
+      this.input.keyboard.enabled = false;
+      this.keyState.up = false;
+      this.keyState.down = false;
+      this.keyState.left = false;
+      this.keyState.right = false;
+    });
+    window.addEventListener("focusout", () => {
+      this.input.keyboard.enabled = true;
     });
     this.input.on("pointerdown", (pointer) => this.pointerTarget = this.toWorldPoint(pointer));
     this.input.on("pointermove", (pointer) => {
@@ -292,6 +316,7 @@ class CacauScene extends Phaser.Scene {
     this.route.nursery = this.makeMovingRoutePoint({ x: 270, y: Phaser.Math.Between(136, 320), w: 184, h: 138, label: "Casinha" }, 0);
     this.route.destination = this.makeMovingRoutePoint({ ...order.home, label: order.destination }, 1);
     this.bird.carrying = null;
+    updatePawHud(null);
   }
 
   makeMovingRoutePoint(point, lane) {
@@ -638,6 +663,7 @@ class CacauScene extends Phaser.Scene {
         color: this.route.order.color,
         familyColor: this.route.order.familyColor
       };
+      updatePawHud(this.bird.carrying);
       this.route.state = "delivery";
       this.route.destination = this.makeMovingRoutePoint({ ...this.route.order.home, label: this.route.order.destination }, 1);
       this.score += 35;
@@ -655,6 +681,7 @@ class CacauScene extends Phaser.Scene {
         this.energy = Math.min(100, this.energy + 18);
         this.deliveries += 1;
         this.bird.carrying = null;
+        updatePawHud(null);
         this.playSound("delivery");
         this.time.delayedCall(170, () => this.playSound("happyBark"));
         this.addPop(this.route.destination.x + this.route.destination.w / 2, this.route.destination.y + this.route.destination.h / 2, 0x65d6ad, 28);
@@ -714,6 +741,8 @@ class CacauScene extends Phaser.Scene {
     pauseButton.textContent = "Pausar";
     pauseButton.setAttribute("aria-pressed", "false");
     this.playSound("over");
+    this.bird.carrying = null;
+    updatePawHud(null);
     save.best = Math.max(save.best, this.score);
     save.totalCoins += this.coins;
     persistSave();
@@ -863,12 +892,12 @@ class CacauScene extends Phaser.Scene {
   }
 
   drawSoftEar(ear, faceSign, alpha = 1) {
-    this.g.fillStyle(0x0d0f12, alpha);
+    this.g.fillStyle(0x0b0d10, alpha);
     this.triangle(ear.root.x, ear.root.y, ear.tip.x, ear.tip.y, ear.outer.x, ear.outer.y);
-    this.g.fillCircle(ear.root.x, ear.root.y, 4.8);
-    this.g.fillCircle(ear.outer.x, ear.outer.y, 5.4);
+    this.g.fillCircle(ear.root.x, ear.root.y, 5.4);
+    this.g.fillCircle(ear.outer.x, ear.outer.y, 6);
 
-    this.g.lineStyle(3, 0x2b1d16, alpha);
+    this.g.lineStyle(3.4, 0x2b1d16, alpha);
     this.g.lineBetween(ear.root.x, ear.root.y, ear.tip.x, ear.tip.y);
     this.g.lineBetween(ear.tip.x, ear.tip.y, ear.outer.x, ear.outer.y);
     this.g.lineBetween(ear.outer.x, ear.outer.y, ear.root.x, ear.root.y);
@@ -878,6 +907,90 @@ class CacauScene extends Phaser.Scene {
     const innerOuter = { x: ear.outer.x - 5 * faceSign, y: ear.outer.y - 2 };
     this.g.fillStyle(0x4d312c, alpha * 0.95);
     this.triangle(innerRoot.x, innerRoot.y, innerTip.x, innerTip.y, innerOuter.x, innerOuter.y);
+    this.g.lineStyle(1.7, 0x8b5a4c, alpha * 0.72);
+    this.g.lineBetween(innerRoot.x + 2 * faceSign, innerRoot.y + 2, innerTip.x, innerTip.y + 4);
+    this.g.fillStyle(0xffffff, alpha * 0.14);
+    this.g.fillCircle(ear.root.x + 2 * faceSign, ear.root.y + 1, 2.2);
+  }
+
+  drawCacauTail(rootX, rootY, faceSign, wag) {
+    const dir = -faceSign;
+    const sway = wag * 0.12;
+    const p1 = { x: rootX + 7 * dir, y: rootY - 3 };
+    const p2 = { x: rootX + (15 + sway) * dir, y: rootY - 14 };
+    const p3 = { x: rootX + (13 + sway * 0.8) * dir, y: rootY - 25 };
+    const p4 = { x: rootX + (8 + sway * 0.6) * dir, y: rootY - 30 };
+
+    this.g.lineStyle(6, 0x2b1d16, 0.9);
+    this.g.beginPath();
+    this.g.moveTo(rootX, rootY);
+    this.g.lineTo(p1.x, p1.y);
+    this.g.lineTo(p2.x, p2.y);
+    this.g.lineTo(p3.x, p3.y);
+    this.g.lineTo(p4.x, p4.y);
+    this.g.strokePath();
+    this.g.lineStyle(4.2, 0x0b0d10, 0.98);
+    this.g.beginPath();
+    this.g.moveTo(rootX, rootY);
+    this.g.lineTo(p1.x, p1.y);
+    this.g.lineTo(p2.x, p2.y);
+    this.g.lineTo(p3.x, p3.y);
+    this.g.lineTo(p4.x, p4.y);
+    this.g.strokePath();
+    this.g.fillStyle(0x0b0d10);
+    for (const point of [p1, p2, p3]) this.g.fillCircle(point.x, point.y, 2.2);
+    this.g.fillStyle(0xb86b33);
+    this.g.fillCircle(p4.x, p4.y, 4.2);
+    this.g.fillStyle(0xf0a05b, 0.72);
+    this.g.fillCircle(p4.x + 1 * dir, p4.y - 1.2, 1.7);
+  }
+
+  drawCacauPaw(x, y, faceSign, scale = 1, alpha = 1) {
+    const toeColor = 0x8b4a24;
+    const padColor = 0x5f341d;
+    const outline = 0x6f3a1d;
+
+    this.g.fillStyle(0x6a3a21, alpha * 0.28);
+    this.g.fillEllipse(x + 1, y + 5 * scale, 19 * scale, 5 * scale);
+    this.g.fillStyle(0xb86b33, alpha);
+    this.g.lineStyle(1.6 * scale, outline, alpha);
+    this.g.fillRoundedRect(x - 8.5 * scale, y - 3 * scale, 18 * scale, 10 * scale, 5 * scale);
+    this.g.strokeRoundedRect(x - 8.5 * scale, y - 3 * scale, 18 * scale, 10 * scale, 5 * scale);
+    this.g.fillStyle(0xd98a4f, alpha);
+    this.g.fillEllipse(x - 0.8 * faceSign, y + 0.6 * scale, 10 * scale, 5.5 * scale);
+    for (const offset of [-5.4, 0, 5.4]) {
+      this.g.fillStyle(toeColor, alpha);
+      this.g.fillCircle(x + offset * scale, y + 5.3 * scale, 2.5 * scale);
+      this.g.fillStyle(0xf0a05b, alpha * 0.8);
+      this.g.fillCircle(x + offset * scale - 0.7 * faceSign, y + 4.3 * scale, 0.8 * scale);
+    }
+    this.g.fillStyle(padColor, alpha * 0.78);
+    this.g.fillEllipse(x + 0.6 * faceSign, y + 5.8 * scale, 4.5 * scale, 2.2 * scale);
+  }
+
+  drawCacauLeg(hipX, hipY, footX, footY, faceSign, phase, near = true) {
+    const alpha = near ? 1 : 0.74;
+    const legDark = near ? 0x2a2828 : 0x211f20;
+    const joint = {
+      x: hipX + Math.sin(phase) * 2.2,
+      y: hipY + 7 + Math.cos(phase) * 1.2
+    };
+    const ankle = {
+      x: footX + Math.sin(phase + 0.8) * 1.3,
+      y: footY - 7 + Math.abs(Math.sin(phase)) * 0.9
+    };
+
+    this.g.fillStyle(legDark, alpha);
+    this.g.lineStyle(2.2, 0x121416, alpha);
+    this.g.fillEllipse(joint.x, joint.y, 14, 22);
+    this.g.strokeEllipse(joint.x, joint.y, 14, 22);
+    this.g.lineStyle(5.2, legDark, alpha);
+    this.g.lineBetween(joint.x + 0.8 * faceSign, joint.y + 7, ankle.x, ankle.y);
+    this.g.lineStyle(2, 0x121416, alpha * 0.82);
+    this.g.lineBetween(joint.x + 0.8 * faceSign, joint.y + 7, ankle.x, ankle.y);
+    this.g.fillStyle(0xb86b33, alpha);
+    this.g.fillEllipse(ankle.x, ankle.y + 2.5, 8, 9);
+    this.drawCacauPaw(footX, footY, faceSign, near ? 0.82 : 0.68, alpha);
   }
 
   drawPropeller(cx, cy, spin) {
@@ -1080,7 +1193,7 @@ class CacauScene extends Phaser.Scene {
     this.g.fillStyle(0x000000, 0.18);
     this.g.fillRoundedRect(doorX + 5 * pulse, doorY + 5 * pulse, doorW - 10 * pulse, doorH - 5 * pulse, 4 * pulse);
 
-    this.drawPickupAnimalInHouse(this.route.order.id, cx, baseY - 24 * pulse, 0.55 * pulse);
+    this.drawPickupAnimalInHouse(this.route.order.id, cx, baseY - 15 * pulse, 0.72 * pulse);
 
     this.g.fillStyle(0xffffff, 0.94);
     this.g.fillRoundedRect(cx - 39 * pulse, bodyY + 9 * pulse, 78 * pulse, 18 * pulse, 9 * pulse);
@@ -1089,8 +1202,8 @@ class CacauScene extends Phaser.Scene {
     this.drawText(this.route.order.name.replace("bebe ", ""), cx, bodyY + 10 * pulse, `${11 * pulse}px`, "#173047", "center");
   }
 
-  drawPickupAnimalInHouse(id, cx, footY, scale = 1) {
-    const data = {
+  animalStyle(id) {
+    return {
       panda: { body: 0xf8fafc, head: 0xffffff, accent: 0x172033, belly: 0xf8fafc, nose: 0x172033, eye: 0x1d4ed8, ear: 0x172033 },
       puppy: { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 },
       kitten: { body: 0xcbd5e1, head: 0xe2e8f0, accent: 0x64748b, belly: 0xffffff, nose: 0xec4899, eye: 0x0ea5e9, ear: 0x94a3b8 },
@@ -1100,73 +1213,196 @@ class CacauScene extends Phaser.Scene {
       turtle: { body: 0x86efac, head: 0xbbf7d0, accent: 0x15803d, belly: 0xfef3c7, nose: 0x166534, eye: 0x2563eb, ear: 0x22c55e },
       duckling: { body: 0xfde68a, head: 0xfef08a, accent: 0xf59e0b, belly: 0xfffbeb, nose: 0xf97316, eye: 0x2563eb, ear: 0xfacc15 }
     }[id] || { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 };
-    const bodyY = footY - 19 * scale;
-    const headY = footY - 47 * scale;
+  }
+
+  drawCartoonAnimalEars(id, cx, headY, scale, data) {
+    this.g.fillStyle(data.ear);
+    this.g.lineStyle(2.6 * scale, data.accent, 0.78);
+    if (id === "bunny") {
+      for (const side of [-1, 1]) {
+        this.g.fillEllipse(cx + side * 14 * scale, headY - 24 * scale, 9 * scale, 35 * scale);
+        this.g.strokeEllipse(cx + side * 14 * scale, headY - 24 * scale, 9 * scale, 35 * scale);
+        this.g.fillStyle(0xffe4ef);
+        this.g.fillEllipse(cx + side * 14 * scale, headY - 24 * scale, 4 * scale, 23 * scale);
+        this.g.fillStyle(data.ear);
+      }
+      return;
+    }
+    if (id === "kitten" || id === "fox") {
+      for (const side of [-1, 1]) {
+        this.triangle(cx + side * 22 * scale, headY - 9 * scale, cx + side * 13 * scale, headY - 32 * scale, cx + side * 5 * scale, headY - 10 * scale);
+        this.strokeTriangle(cx + side * 22 * scale, headY - 9 * scale, cx + side * 13 * scale, headY - 32 * scale, cx + side * 5 * scale, headY - 10 * scale);
+        this.g.fillStyle(0xffd6e7, 0.78);
+        this.triangle(cx + side * 17 * scale, headY - 12 * scale, cx + side * 13 * scale, headY - 23 * scale, cx + side * 9 * scale, headY - 12 * scale);
+        this.g.fillStyle(data.ear);
+      }
+      return;
+    }
+    if (id !== "duckling" && id !== "turtle") {
+      this.g.fillCircle(cx - 18 * scale, headY - 13 * scale, 9 * scale);
+      this.g.fillCircle(cx + 18 * scale, headY - 13 * scale, 9 * scale);
+      this.g.strokeCircle(cx - 18 * scale, headY - 13 * scale, 9 * scale);
+      this.g.strokeCircle(cx + 18 * scale, headY - 13 * scale, 9 * scale);
+    }
+    if (id === "puppy") {
+      this.g.fillEllipse(cx - 23 * scale, headY - 2 * scale, 12 * scale, 28 * scale);
+      this.g.fillEllipse(cx + 23 * scale, headY - 2 * scale, 12 * scale, 28 * scale);
+    }
+  }
+
+  drawCartoonAnimalPaws(cx, footY, scale, data, spread = 1) {
+    for (const side of [-1, 1]) {
+      const px = cx + side * 12 * spread * scale;
+      this.g.fillStyle(data.accent, 0.18);
+      this.g.fillEllipse(px, footY + 2 * scale, 18 * scale, 5 * scale);
+      this.g.fillStyle(data.body);
+      this.g.lineStyle(1.9 * scale, data.accent, 0.72);
+      this.g.fillRoundedRect(px - 7 * scale, footY - 6 * scale, 14 * scale, 11 * scale, 5 * scale);
+      this.g.strokeRoundedRect(px - 7 * scale, footY - 6 * scale, 14 * scale, 11 * scale, 5 * scale);
+      this.g.fillStyle(data.accent, 0.74);
+      this.g.fillCircle(px - 3.8 * scale, footY + 2.5 * scale, 2.1 * scale);
+      this.g.fillCircle(px + 3.8 * scale, footY + 2.5 * scale, 2.1 * scale);
+    }
+  }
+
+  drawAnimalBow(cx, y, scale = 1) {
+    this.g.fillStyle(0xff4f9a, 0.98);
+    this.g.lineStyle(1.8 * scale, 0xb91c5c, 0.85);
+    this.triangle(cx, y, cx - 11 * scale, y - 7 * scale, cx - 11 * scale, y + 7 * scale);
+    this.strokeTriangle(cx, y, cx - 11 * scale, y - 7 * scale, cx - 11 * scale, y + 7 * scale);
+    this.triangle(cx, y, cx + 11 * scale, y - 7 * scale, cx + 11 * scale, y + 7 * scale);
+    this.strokeTriangle(cx, y, cx + 11 * scale, y - 7 * scale, cx + 11 * scale, y + 7 * scale);
+    this.g.fillStyle(0xfff7b8);
+    this.g.fillCircle(cx, y, 4.2 * scale);
+  }
+
+  drawCartoonHouseAnimal(id, cx, footY, scale = 1, faceSign = 1, baby = true, options = {}) {
+    const data = this.animalStyle(id);
+    const happy = options.happy === true;
+    const mother = options.mother === true;
+    const bounce = Math.sin(this.worldTime * 4.2 + cx * 0.02) * 1.2 * scale;
+    const bodyY = footY - (baby ? 20 : 28) * scale + bounce;
+    const headY = footY - (baby ? 47 : 67) * scale + bounce;
     const blink = Math.sin(this.worldTime * 3.1) > 0.965;
     const look = Math.sin(this.worldTime * 1.7) * 1.1 * scale;
 
-    this.g.fillStyle(data.body);
-    this.g.lineStyle(3 * scale, data.accent, 0.9);
-    this.g.fillEllipse(cx, bodyY, 38 * scale, 42 * scale);
-    this.g.strokeEllipse(cx, bodyY, 38 * scale, 42 * scale);
-    this.g.fillStyle(data.belly);
-    this.g.fillEllipse(cx, bodyY + 8 * scale, 19 * scale, 24 * scale);
+    this.g.fillStyle(0x173047, baby ? 0.15 : 0.18);
+    this.g.fillEllipse(cx, footY + 5 * scale, (baby ? 44 : 58) * scale, (baby ? 10 : 13) * scale);
 
-    this.g.fillStyle(data.ear);
-    if (id === "bunny") {
-      this.g.fillEllipse(cx - 13 * scale, headY - 25 * scale, 9 * scale, 34 * scale);
-      this.g.fillEllipse(cx + 13 * scale, headY - 25 * scale, 9 * scale, 34 * scale);
-      this.g.fillStyle(0xffe4ef);
-      this.g.fillEllipse(cx - 13 * scale, headY - 25 * scale, 4 * scale, 24 * scale);
-      this.g.fillEllipse(cx + 13 * scale, headY - 25 * scale, 4 * scale, 24 * scale);
-    } else if (id === "kitten" || id === "fox") {
-      this.triangle(cx - 21 * scale, headY - 11 * scale, cx - 13 * scale, headY - 32 * scale, cx - 5 * scale, headY - 11 * scale);
-      this.triangle(cx + 21 * scale, headY - 11 * scale, cx + 13 * scale, headY - 32 * scale, cx + 5 * scale, headY - 11 * scale);
-      this.g.fillStyle(0xffd6e7, 0.82);
-      this.triangle(cx - 17 * scale, headY - 13 * scale, cx - 13 * scale, headY - 23 * scale, cx - 9 * scale, headY - 13 * scale);
-      this.triangle(cx + 17 * scale, headY - 13 * scale, cx + 13 * scale, headY - 23 * scale, cx + 9 * scale, headY - 13 * scale);
+    if (id === "turtle") {
+      this.g.fillStyle(data.body);
+      this.g.lineStyle(3 * scale, data.accent, 0.88);
+      this.g.fillEllipse(cx, bodyY, 48 * scale, 34 * scale);
+      this.g.strokeEllipse(cx, bodyY, 48 * scale, 34 * scale);
+      this.g.fillStyle(data.accent, 0.24);
+      this.g.fillEllipse(cx, bodyY - 1 * scale, 31 * scale, 22 * scale);
+      this.g.lineStyle(1.7 * scale, data.accent, 0.5);
+      this.g.lineBetween(cx - 13 * scale, bodyY - 10 * scale, cx + 13 * scale, bodyY + 10 * scale);
+      this.g.lineBetween(cx + 13 * scale, bodyY - 10 * scale, cx - 13 * scale, bodyY + 10 * scale);
+      this.drawCartoonAnimalPaws(cx, footY, scale * 0.78, data, 1.45);
+      this.g.fillStyle(data.head);
+      this.g.lineStyle(2.4 * scale, data.accent, 0.78);
+      this.g.fillEllipse(cx + 17 * faceSign * scale, headY + 25 * scale, 27 * scale, 22 * scale);
+      this.g.strokeEllipse(cx + 17 * faceSign * scale, headY + 25 * scale, 27 * scale, 22 * scale);
+    } else if (id === "duckling") {
+      this.g.fillStyle(data.body);
+      this.g.lineStyle(3 * scale, data.accent, 0.82);
+      this.g.fillEllipse(cx, bodyY, 39 * scale, 43 * scale);
+      this.g.strokeEllipse(cx, bodyY, 39 * scale, 43 * scale);
+      this.drawCartoonAnimalPaws(cx, footY, scale * 0.72, { ...data, body: data.nose }, 1.2);
+      this.g.fillStyle(data.head);
+      this.g.lineStyle(3 * scale, data.accent, 0.82);
+      this.g.fillEllipse(cx, headY, 45 * scale, 38 * scale);
+      this.g.strokeEllipse(cx, headY, 45 * scale, 38 * scale);
     } else {
-      this.g.fillCircle(cx - 17 * scale, headY - 13 * scale, 9 * scale);
-      this.g.fillCircle(cx + 17 * scale, headY - 13 * scale, 9 * scale);
+      this.drawCartoonAnimalPaws(cx, footY, scale * 0.82, data, baby ? 1.25 : 1.55);
+      this.g.fillStyle(data.body);
+      this.g.lineStyle(3 * scale, data.accent, 0.86);
+      this.g.fillEllipse(cx, bodyY, (baby ? 40 : 48) * scale, (baby ? 44 : 58) * scale);
+      this.g.strokeEllipse(cx, bodyY, (baby ? 40 : 48) * scale, (baby ? 44 : 58) * scale);
+      this.g.fillStyle(data.belly);
+      this.g.fillEllipse(cx, bodyY + 8 * scale, (baby ? 20 : 24) * scale, (baby ? 25 : 35) * scale);
+      this.drawCartoonAnimalEars(id, cx, headY, scale, data);
+      this.g.fillStyle(data.head);
+      this.g.lineStyle(3 * scale, data.accent, 0.88);
+      this.g.fillEllipse(cx, headY, (baby ? 45 : 52) * scale, (baby ? 37 : 43) * scale);
+      this.g.strokeEllipse(cx, headY, (baby ? 45 : 52) * scale, (baby ? 37 : 43) * scale);
     }
 
-    this.g.fillStyle(data.head);
-    this.g.lineStyle(3 * scale, data.accent, 0.9);
-    this.g.fillEllipse(cx, headY, 43 * scale, 36 * scale);
-    this.g.strokeEllipse(cx, headY, 43 * scale, 36 * scale);
+    if (id === "panda") {
+      this.g.fillStyle(data.accent, 0.9);
+      this.g.fillEllipse(cx - 11 * scale, headY - 4 * scale, 12 * scale, 15 * scale);
+      this.g.fillEllipse(cx + 11 * scale, headY - 4 * scale, 12 * scale, 15 * scale);
+    }
+    if (id === "fox") {
+      this.g.fillStyle(data.belly, 0.96);
+      this.triangle(cx - 20 * scale, headY - 5 * scale, cx, headY + 15 * scale, cx + 20 * scale, headY - 5 * scale);
+    }
 
-    if (blink) {
-      this.g.lineStyle(3 * scale, 0x173047, 0.85);
-      this.g.lineBetween(cx - 14 * scale, headY - 3 * scale, cx - 6 * scale, headY - 3 * scale);
-      this.g.lineBetween(cx + 6 * scale, headY - 3 * scale, cx + 14 * scale, headY - 3 * scale);
-    } else {
-      for (const side of [-1, 1]) {
-        const eyeX = cx + side * 10 * scale;
+    const eyeY = id === "turtle" ? headY + 21 * scale : headY - 4 * scale;
+    const eyeCenter = id === "turtle" ? cx + 17 * faceSign * scale : cx;
+    const eyeGap = baby ? 10 : 12;
+    for (const side of [-1, 1]) {
+      const eyeX = eyeCenter + side * eyeGap * scale;
+      if (blink) {
+        this.g.lineStyle(2.4 * scale, 0x173047, 0.78);
+        this.g.lineBetween(eyeX - 5 * scale, eyeY, eyeX + 5 * scale, eyeY);
+      } else {
         this.g.fillStyle(0xffffff);
-        this.g.fillCircle(eyeX, headY - 4 * scale, 7 * scale);
+        this.g.fillCircle(eyeX, eyeY, (baby ? 6.5 : 7.5) * scale);
+        this.g.lineStyle(1.5 * scale, 0x173047, 0.35);
+        this.g.strokeCircle(eyeX, eyeY, (baby ? 6.5 : 7.5) * scale);
         this.g.fillStyle(data.eye);
-        this.g.fillCircle(eyeX + look, headY - 3 * scale, 3.7 * scale);
+        this.g.fillCircle(eyeX + look, eyeY + 0.8 * scale, 3.6 * scale);
         this.g.fillStyle(0x07111f);
-        this.g.fillCircle(eyeX + look, headY - 3 * scale, 2.2 * scale);
+        this.g.fillCircle(eyeX + look, eyeY + 0.8 * scale, 2.2 * scale);
         this.g.fillStyle(0xffffff);
-        this.g.fillCircle(eyeX + look + 1.5 * scale, headY - 5 * scale, 1.2 * scale);
+        this.g.fillCircle(eyeX + look + 1.4 * scale, eyeY - 1.9 * scale, 1.1 * scale);
+        if (happy) {
+          this.g.lineStyle(1.5 * scale, 0x173047, 0.45);
+          this.g.beginPath();
+          this.g.arc(eyeX, eyeY - 4 * scale, 6 * scale, Math.PI * 1.08, Math.PI * 1.92);
+          this.g.strokePath();
+        }
       }
     }
 
-    this.g.fillStyle(data.nose);
-    this.g.fillEllipse(cx, headY + 8 * scale, 7 * scale, 5 * scale);
-    this.g.lineStyle(2 * scale, data.nose, 0.85);
-    this.g.lineBetween(cx, headY + 11 * scale, cx, headY + 16 * scale);
-    this.g.beginPath();
-    this.g.arc(cx - 4 * scale, headY + 15 * scale, 4 * scale, 0.1, Math.PI - 0.1);
-    this.g.arc(cx + 4 * scale, headY + 15 * scale, 4 * scale, 0.1, Math.PI - 0.1);
-    this.g.strokePath();
-    this.g.fillStyle(data.body);
-    this.g.fillCircle(cx - 12 * scale, footY - 4 * scale, 5 * scale);
-    this.g.fillCircle(cx + 12 * scale, footY - 4 * scale, 5 * scale);
+    const noseX = id === "turtle" ? cx + 31 * faceSign * scale : cx;
+    const noseY = id === "turtle" ? headY + 28 * scale : headY + 8 * scale;
+    if (id === "duckling") {
+      this.g.fillStyle(data.nose);
+      this.g.lineStyle(1.6 * scale, 0xd97706, 0.72);
+      this.triangle(cx - 10 * scale, noseY - 4 * scale, cx + 10 * scale, noseY - 4 * scale, cx, noseY + 8 * scale);
+      this.strokeTriangle(cx - 10 * scale, noseY - 4 * scale, cx + 10 * scale, noseY - 4 * scale, cx, noseY + 8 * scale);
+    } else {
+      this.g.fillStyle(data.nose);
+      this.g.fillEllipse(noseX, noseY, 7.4 * scale, 5.4 * scale);
+      this.g.lineStyle((happy ? 2.2 : 1.7) * scale, data.nose, 0.82);
+      this.g.beginPath();
+      this.g.arc(noseX - 3.5 * scale, noseY + 7 * scale, happy ? 4.8 * scale : 3.4 * scale, 0.1, Math.PI - 0.1);
+      this.g.arc(noseX + 3.5 * scale, noseY + 7 * scale, happy ? 4.8 * scale : 3.4 * scale, 0.1, Math.PI - 0.1);
+      this.g.strokePath();
+    }
+
+    if (mother) {
+      const bowX = id === "turtle" ? cx + 8 * faceSign * scale : cx - 12 * scale;
+      const bowY = id === "bunny" ? headY - 42 * scale : headY - 23 * scale;
+      this.drawAnimalBow(bowX, bowY, scale * 0.82);
+    }
+
+    this.g.fillStyle(0xffffff, 0.2);
+    this.g.fillEllipse(cx - 9 * scale, headY - 12 * scale, 20 * scale, 7 * scale);
+    this.g.fillStyle(0xffffff, 0.16);
+    this.g.fillEllipse(cx + 8 * scale, bodyY - 10 * scale, 16 * scale, 7 * scale);
+  }
+
+  drawPickupAnimalInHouse(id, cx, footY, scale = 1) {
+    this.drawCartoonHouseAnimal(id, cx, footY, scale, 1, true);
   }
 
   drawBabyAnimalPortrait(id, cx, cy, pulse = 1) {
+    this.drawCartoonHouseAnimal(id, cx, cy + 48, 1.08 * pulse, 1, true);
+    return;
     const data = {
       panda: { body: 0xf8fafc, head: 0xffffff, accent: 0x172033, belly: 0xf8fafc, nose: 0x172033, eye: 0x1d4ed8, ear: 0x172033 },
       puppy: { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 },
@@ -1301,22 +1537,22 @@ class CacauScene extends Phaser.Scene {
     const pulse = active ? 1 + Math.sin(this.worldTime * 4.2) * 0.025 : 1;
     const cx = point.x + point.w / 2;
     const baseY = point.y + point.h + 6;
-    const houseW = point.w * 1.42 * pulse;
-    const houseH = Math.max(150, point.h * 1.3) * pulse;
+    const houseW = point.w * 1.08 * pulse;
+    const houseH = Math.max(112, point.h * 0.94) * pulse;
     const bodyX = cx - houseW / 2;
     const bodyY = baseY - houseH;
-    const roofY = bodyY - 45 * pulse;
-    const doorW = houseW * 0.56;
-    const doorH = houseH * 0.62;
+    const roofY = bodyY - 34 * pulse;
+    const doorW = houseW * 0.6;
+    const doorH = houseH * 0.66;
     const doorX = cx - doorW / 2;
     const doorY = baseY - doorH;
     const signText = this.route.order.destination.replace("Familia ", "FAM. ").toUpperCase();
 
     this.g.fillStyle(0x173047, 0.17);
-    this.g.fillEllipse(cx, baseY + 10, houseW * 0.92, 18);
+    this.g.fillEllipse(cx, baseY + 8, houseW * 0.92, 14);
     if (active) {
       this.g.fillStyle(0xfff7b8, 0.24);
-      this.g.fillEllipse(cx, bodyY + houseH * 0.52, houseW * 1.22, houseH * 1.18);
+      this.g.fillEllipse(cx, bodyY + houseH * 0.52, houseW * 1.16, houseH * 1.08);
     }
 
     this.g.fillStyle(0xfff4bd, 0.98);
@@ -1329,15 +1565,15 @@ class CacauScene extends Phaser.Scene {
     }
 
     this.g.fillStyle(0xff4a3a);
-    this.triangle(bodyX - 17 * pulse, bodyY + 8 * pulse, cx, roofY, bodyX + houseW + 17 * pulse, bodyY + 8 * pulse);
+    this.triangle(bodyX - 13 * pulse, bodyY + 7 * pulse, cx, roofY, bodyX + houseW + 13 * pulse, bodyY + 7 * pulse);
     this.g.fillStyle(0xd9362f, 0.46);
-    this.triangle(cx, roofY, bodyX + houseW + 17 * pulse, bodyY + 8 * pulse, bodyX + houseW * 0.52, bodyY + 8 * pulse);
-    this.g.lineStyle(7 * pulse, 0xff3f32, 0.98);
-    this.g.lineBetween(bodyX - 12 * pulse, bodyY + 7 * pulse, cx, roofY + 3 * pulse);
-    this.g.lineBetween(cx, roofY + 3 * pulse, bodyX + houseW + 12 * pulse, bodyY + 7 * pulse);
+    this.triangle(cx, roofY, bodyX + houseW + 13 * pulse, bodyY + 7 * pulse, bodyX + houseW * 0.52, bodyY + 7 * pulse);
+    this.g.lineStyle(5.5 * pulse, 0xff3f32, 0.98);
+    this.g.lineBetween(bodyX - 9 * pulse, bodyY + 6 * pulse, cx, roofY + 2 * pulse);
+    this.g.lineBetween(cx, roofY + 2 * pulse, bodyX + houseW + 9 * pulse, bodyY + 6 * pulse);
 
     this.g.fillStyle(0xf9d989, 0.92);
-    this.triangle(cx - 32 * pulse, bodyY + 1 * pulse, cx, roofY + 18 * pulse, cx + 32 * pulse, bodyY + 1 * pulse);
+    this.triangle(cx - 24 * pulse, bodyY + 1 * pulse, cx, roofY + 14 * pulse, cx + 24 * pulse, bodyY + 1 * pulse);
     this.g.lineStyle(2, 0xb98c42, 0.65);
     this.g.lineBetween(cx - 16 * pulse, bodyY - 7 * pulse, cx + 16 * pulse, bodyY + 9 * pulse);
     this.g.lineBetween(cx + 16 * pulse, bodyY - 7 * pulse, cx - 16 * pulse, bodyY + 9 * pulse);
@@ -1346,20 +1582,22 @@ class CacauScene extends Phaser.Scene {
     this.g.fillRoundedRect(doorX, doorY, doorW, doorH, 9 * pulse);
     this.g.fillStyle(0x000000, 0.18);
     this.g.fillRoundedRect(doorX + 5 * pulse, doorY + 5 * pulse, doorW - 10 * pulse, doorH - 5 * pulse, 7 * pulse);
-    this.drawFamilyParentInHouse(this.route.order.id, cx - 30 * pulse, baseY - 12 * pulse, 0.7 * pulse, -1);
-    this.drawFamilyParentInHouse(this.route.order.id, cx + 30 * pulse, baseY - 12 * pulse, 0.7 * pulse, 1);
+    this.drawFamilyParentInHouse(this.route.order.id, cx - 23 * pulse, baseY - 7 * pulse, 0.62 * pulse, -1, true);
+    this.drawFamilyParentInHouse(this.route.order.id, cx + 23 * pulse, baseY - 7 * pulse, 0.62 * pulse, 1, false);
 
     this.g.fillStyle(0xfff8d7, 0.98);
     this.g.lineStyle(2, 0xb98c42, 0.72);
-    this.g.fillRoundedRect(cx - 48 * pulse, bodyY + 14 * pulse, 96 * pulse, 22 * pulse, 7 * pulse);
-    this.g.strokeRoundedRect(cx - 48 * pulse, bodyY + 14 * pulse, 96 * pulse, 22 * pulse, 7 * pulse);
-    this.drawText(signText, cx, bodyY + 17 * pulse, `${10 * pulse}px`, "#8a5b32", "center");
+    this.g.fillRoundedRect(cx - 39 * pulse, bodyY + 10 * pulse, 78 * pulse, 18 * pulse, 7 * pulse);
+    this.g.strokeRoundedRect(cx - 39 * pulse, bodyY + 10 * pulse, 78 * pulse, 18 * pulse, 7 * pulse);
+    this.drawText(signText, cx, bodyY + 12 * pulse, `${8.5 * pulse}px`, "#8a5b32", "center");
 
     this.drawFamilyFlowers(bodyX + 12 * pulse, baseY - 9 * pulse, pulse);
     this.drawFamilyFlowers(bodyX + houseW - 12 * pulse, baseY - 9 * pulse, pulse);
   }
 
-  drawFamilyParentInHouse(id, cx, footY, scale, faceSign = 1) {
+  drawFamilyParentInHouse(id, cx, footY, scale, faceSign = 1, mother = false) {
+    this.drawCartoonHouseAnimal(id, cx, footY, scale, faceSign, false, { happy: true, mother });
+    return;
     const data = {
       panda: { body: 0xf8fafc, head: 0xffffff, accent: 0x172033, belly: 0xf8fafc, nose: 0x172033, eye: 0x1d4ed8, ear: 0x172033 },
       puppy: { body: 0xd88c44, head: 0xe8a45d, accent: 0x8b4a24, belly: 0xffedd5, nose: 0x4a2414, eye: 0x2563eb, ear: 0x8b4a24 },
@@ -1436,6 +1674,7 @@ class CacauScene extends Phaser.Scene {
     const y = this.bird.y;
     const propellerSpin = this.bird.wing * 1.35;
     const tailWag = Math.sin(this.bird.wing * 1.6) * 9;
+    const walk = Math.sin(this.bird.wing * 0.86);
     const faceSign = this.bird.direcao === "esquerda" ? -1 : 1;
     const body = { x: x + 45, y: y + 35 };
     const head = { x: body.x + 38 * faceSign, y: y + 24 };
@@ -1455,8 +1694,10 @@ class CacauScene extends Phaser.Scene {
     };
     const outfit = outfits.find((item) => item.id === save.outfit) || outfits[0];
 
-    this.g.fillStyle(0x153047, 0.18);
-    this.g.fillEllipse(x + 40, y + 61, 84, 18);
+    this.g.fillStyle(0x153047, 0.13);
+    this.g.fillEllipse(x + 42, y + 71, 96, 21);
+    this.g.fillStyle(0x153047, 0.1);
+    this.g.fillEllipse(x + 48, y + 66, 74, 14);
 
     // Mochila no dorso, com a helice exclusivamente no topo.
     this.g.fillStyle(outfit.pack);
@@ -1483,6 +1724,10 @@ class CacauScene extends Phaser.Scene {
     this.g.fillStyle(0xffffff, 0.22);
     this.g.fillEllipse(body.x + 9 * faceSign, y + 22, 70, 34);
 
+    this.drawCacauTail(body.x - 42 * faceSign, y + 34, faceSign, tailWag);
+    this.drawCacauLeg(body.x - 22 * faceSign, y + 44, body.x - 21 * faceSign - walk * 1.3, y + 63 + Math.max(0, -walk) * 1.2, faceSign, walk + Math.PI, false);
+    this.drawCacauLeg(body.x + 8 * faceSign, y + 44, body.x + 7 * faceSign + walk * 1.3, y + 63 + Math.max(0, walk) * 1.2, faceSign, walk, false);
+
     // Corpo da Cacau, com volumes arredondados para um visual infantil suave.
     this.g.lineStyle(5, 0x2b1d16);
     this.g.fillStyle(0x111417);
@@ -1490,6 +1735,10 @@ class CacauScene extends Phaser.Scene {
     this.g.strokeEllipse(body.x, body.y, 86, 54);
     this.g.fillStyle(0x252a31, 0.55);
     this.g.fillEllipse(body.x - 17 * faceSign, y + 25, 34, 24);
+    this.g.fillStyle(0xffffff, 0.13);
+    this.g.fillEllipse(body.x - 10 * faceSign, y + 20, 50, 17);
+    this.g.fillStyle(0xffffff, 0.08);
+    this.g.fillEllipse(body.x + 13 * faceSign, y + 29, 26, 14);
 
     this.g.fillStyle(0x171a1f);
     this.g.fillEllipse(head.x, head.y, 52, 42);
@@ -1508,8 +1757,8 @@ class CacauScene extends Phaser.Scene {
     this.g.strokeEllipse(muzzle.x, muzzle.y, 35, 24);
     this.g.fillCircle(head.x - 12 * faceSign, y + 25, 5);
     this.g.fillCircle(head.x + 8 * faceSign, y + 25, 5);
-    this.g.fillEllipse(body.x - 17 * faceSign, y + 51, 18, 16);
-    this.g.fillEllipse(body.x + 15 * faceSign, y + 51, 18, 16);
+    this.g.fillEllipse(body.x - 17 * faceSign, y + 50, 14, 12);
+    this.g.fillEllipse(body.x + 15 * faceSign, y + 50, 14, 12);
     this.g.fillStyle(0x6f3a1d);
     this.g.fillCircle(nose.x, nose.y, 4.4);
 
@@ -1524,30 +1773,23 @@ class CacauScene extends Phaser.Scene {
     this.g.strokeCircle(eye.x, eye.y, 10);
     this.g.lineBetween(eye.x + 10 * faceSign, eye.y, eye.x + 19 * faceSign, eye.y + 1);
 
-    // Patinhas e rabinho animado.
-    this.g.lineStyle(7, 0xb86b33);
-    this.g.lineBetween(body.x - 19 * faceSign, y + 48, body.x - 14 * faceSign, y + 70);
-    this.g.lineBetween(body.x + 15 * faceSign, y + 48, body.x + 11 * faceSign, y + 71);
-    this.g.lineStyle(4.5, 0x111417);
-    this.g.beginPath();
-    this.g.moveTo(body.x - 43 * faceSign, y + 34);
-    this.g.lineTo(body.x - 52 * faceSign, y + 24 + tailWag * 0.08);
-    this.g.lineTo(body.x - 48 * faceSign, y + 14 + tailWag * 0.28);
-    this.g.strokePath();
-    this.g.fillStyle(0xb86b33);
-    this.g.fillCircle(body.x - 48 * faceSign, y + 14 + tailWag * 0.28, 2.6);
+    // Pernas próximas por cima do corpo, com pezinhos cartoon e leve passada.
+    this.drawCacauLeg(body.x - 15 * faceSign, y + 47, body.x - 15 * faceSign + walk * 1.8, y + 64 + Math.max(0, walk) * 1.4, faceSign, walk, true);
+    this.drawCacauLeg(body.x + 17 * faceSign, y + 47, body.x + 16 * faceSign - walk * 1.8, y + 64 + Math.max(0, -walk) * 1.4, faceSign, walk + Math.PI, true);
 
     // Pequenos brilhos para dar acabamento 3D suave.
-    this.g.fillStyle(0xffffff, 0.18);
+    this.g.fillStyle(0xffffff, 0.2);
     this.g.fillEllipse(head.x - 12 * faceSign, y + 15, 34, 12);
-    this.g.fillEllipse(body.x - 12 * faceSign, y + 25, 28, 10);
+    this.g.fillEllipse(body.x - 13 * faceSign, y + 22, 34, 11);
+    this.g.fillStyle(0xffffff, 0.11);
+    this.g.fillEllipse(body.x + 18 * faceSign, y + 34, 20, 8);
 
     if (this.bird.carrying) {
       this.g.fillStyle(0xffffff);
       this.g.fillRoundedRect(x + 20, y - 34, 52, 34, 10);
       this.g.lineStyle(3, this.bird.carrying.familyColor);
       this.g.strokeRoundedRect(x + 20, y - 34, 52, 34, 10);
-      this.drawText(animalEmoji[this.bird.carrying.id], x + 46, y - 28, "25px", "#173047", "center");
+      this.drawCartoonHouseAnimal(this.bird.carrying.id, x + 46, y - 4, 0.32, 1, true);
     }
   }
 
@@ -1835,6 +2077,10 @@ function closeShop() {
 }
 
 startButton.addEventListener("click", () => {
+  if (!window.CacauApp?.isAuthenticated?.()) {
+    window.CacauApp?.showAuthGate?.();
+    return;
+  }
   startPanel.classList.add("hidden");
   pausePanel.classList.add("hidden");
   gameOverPanel.classList.add("hidden");
@@ -1845,6 +2091,7 @@ startButton.addEventListener("click", () => {
 pauseButton.addEventListener("click", () => gameScene?.togglePause());
 resumeButton.addEventListener("click", () => gameScene?.resumeGame());
 window.addEventListener("keydown", (event) => {
+  if (isTypingTarget(event.target)) return;
   if (event.key.toLowerCase() !== "p" && event.key !== "Escape") return;
   event.preventDefault();
   gameScene?.togglePause();
@@ -1862,9 +2109,33 @@ closeShopButton.addEventListener("click", closeShop);
 
 renderShop();
 updatePawHud(null);
-setGameUiState("menu");
+setGameUiState("auth");
 pauseButton.classList.add("hidden");
 
 window.CacauGame = {
-  applyCloudProgress
+  applyCloudProgress,
+  showMainMenu() {
+    startPanel.classList.remove("hidden");
+    gameOverPanel.classList.add("hidden");
+    pausePanel.classList.add("hidden");
+    shopPanel.classList.add("hidden");
+    setGameUiState("menu");
+    pauseButton.classList.add("hidden");
+  },
+  showAuthGate() {
+    startPanel.classList.add("hidden");
+    gameOverPanel.classList.add("hidden");
+    pausePanel.classList.add("hidden");
+    shopPanel.classList.add("hidden");
+    setGameUiState("auth");
+    pauseButton.classList.add("hidden");
+  }
 };
+
+if (window.CacauApp?.state?.progress) {
+  applyCloudProgress(window.CacauApp.state.progress);
+}
+
+if (window.CacauApp?.isAuthenticated?.()) {
+  window.CacauGame.showMainMenu();
+}

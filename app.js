@@ -60,6 +60,16 @@ function xpToNextLevel(level) {
   return Math.max(120, level * level * 120);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#039;"
+  })[char]);
+}
+
 function renderAccount() {
   const progress = appState.progress;
   const level = progress?.player_level || 1;
@@ -99,6 +109,31 @@ function hidePanel(panel) {
   panel.classList.add("hidden");
 }
 
+function setAuthChecking(checking) {
+  ui.authPanel.classList.toggle("is-checking", checking);
+  ui.loginForm.classList.toggle("hidden", checking);
+  ui.registerForm.classList.add("hidden");
+  document.getElementById("loginTab").classList.toggle("active", !checking);
+  document.getElementById("registerTab").classList.remove("active");
+}
+
+function showAuthGate(message = "") {
+  setAuthChecking(false);
+  setAuthMode("login");
+  ui.authPanel.classList.add("auth-gate");
+  hidePanel(ui.tutorialPanel);
+  hidePanel(ui.leaderboardPanel);
+  hidePanel(ui.achievementsPanel);
+  showPanel(ui.authPanel);
+  window.CacauGame?.showAuthGate?.();
+  ui.authMessage.textContent = message;
+}
+
+function showMainMenu() {
+  hidePanel(ui.authPanel);
+  window.CacauGame?.showMainMenu?.();
+}
+
 function setAuthMode(mode) {
   const loginMode = mode === "login";
   document.getElementById("loginTab").classList.toggle("active", loginMode);
@@ -112,15 +147,21 @@ async function loadMe() {
   const auth = storedAuth();
   if (!auth?.token) {
     renderAccount();
+    showAuthGate();
     return;
   }
   appState.token = auth.token;
+  setAuthChecking(true);
+  showPanel(ui.authPanel);
+  ui.authMessage.textContent = "Verificando conta salva...";
   try {
     applySession(await request("/api/me"));
+    showMainMenu();
   } catch {
     appState.token = null;
     persistAuth(null);
     renderAccount();
+    showAuthGate("Sessao expirada. Entre novamente.");
   }
 }
 
@@ -137,8 +178,8 @@ function renderLeaderboard() {
   }
   ui.leaderboardList.innerHTML = appState.leaderboard.map((row, index) => `
     <div class="list-row">
-      <strong>${index + 1}. ${row.name}</strong>
-      <span>${row.score} pts · fase ${row.level}</span>
+      <strong>${index + 1}. ${escapeHtml(row.name)}</strong>
+      <span>${escapeHtml(row.score)} pts · fase ${escapeHtml(row.level)}</span>
     </div>
   `).join("");
 }
@@ -152,10 +193,10 @@ function renderAchievements() {
   ui.achievementsList.innerHTML = achievements.map((item) => `
     <div class="achievement-row${item.unlockedAt ? " unlocked" : ""}">
       <div>
-        <strong>${item.title}</strong>
-        <span>${item.description}</span>
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>${escapeHtml(item.description)}</span>
       </div>
-      <small>${item.unlockedAt ? "Liberada" : `+${item.rewardCoins} moedas · +${item.rewardXp} XP`}</small>
+      <small>${item.unlockedAt ? "Liberada" : `+${escapeHtml(item.rewardCoins)} moedas · +${escapeHtml(item.rewardXp)} XP`}</small>
     </div>
   `).join("");
 }
@@ -179,11 +220,33 @@ async function submitGameResult(result) {
   }
 }
 
+async function saveOutfit(outfit) {
+  if (!appState.user || !appState.token) {
+    showAuthGate("Entre na conta para salvar looks.");
+    return null;
+  }
+  try {
+    const data = await request("/api/progress/outfit", {
+      method: "PATCH",
+      body: { outfit }
+    });
+    appState.progress = data.progress;
+    renderAccount();
+    return data;
+  } catch (error) {
+    ui.cloudStatus.textContent = `Nuvem indisponivel: ${error.message}`;
+    return { error: error.message };
+  }
+}
+
 document.getElementById("openAuthButton").addEventListener("click", () => {
-  setAuthMode("login");
-  showPanel(ui.authPanel);
+  if (appState.user) return;
+  showAuthGate();
 });
-document.getElementById("closeAuthButton").addEventListener("click", () => hidePanel(ui.authPanel));
+document.getElementById("closeAuthButton").addEventListener("click", () => {
+  if (!appState.user) return;
+  hidePanel(ui.authPanel);
+});
 document.getElementById("loginTab").addEventListener("click", () => setAuthMode("login"));
 document.getElementById("registerTab").addEventListener("click", () => setAuthMode("register"));
 
@@ -199,7 +262,7 @@ ui.loginForm.addEventListener("submit", async (event) => {
       }
     });
     applySession(data, data.token);
-    hidePanel(ui.authPanel);
+    showMainMenu();
   } catch (error) {
     ui.authMessage.textContent = error.message;
   }
@@ -218,7 +281,7 @@ ui.registerForm.addEventListener("submit", async (event) => {
       }
     });
     applySession(data, data.token);
-    hidePanel(ui.authPanel);
+    showMainMenu();
   } catch (error) {
     ui.authMessage.textContent = error.message;
   }
@@ -233,6 +296,7 @@ document.getElementById("logoutButton").addEventListener("click", async () => {
   persistAuth(null);
   renderAccount();
   renderAchievements();
+  showAuthGate("Voce saiu da conta. Login obrigatorio para jogar.");
 });
 
 document.getElementById("leaderboardButton").addEventListener("click", async () => {
@@ -262,8 +326,11 @@ document.getElementById("finishTutorialButton").addEventListener("click", async 
 window.CacauApp = {
   state: appState,
   submitGameResult,
+  saveOutfit,
   renderAccount,
-  loadLeaderboard
+  loadLeaderboard,
+  isAuthenticated: () => Boolean(appState.user && appState.token),
+  showAuthGate
 };
 
 renderAccount();

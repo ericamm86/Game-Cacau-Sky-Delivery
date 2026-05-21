@@ -22,6 +22,11 @@ const {
 const app = express();
 const PORT = Number(process.env.PORT || 5177);
 const publicRoot = path.join(__dirname, "..");
+const outfitCatalog = [
+  { id: "classic", price: 0 },
+  { id: "park", price: 35 },
+  { id: "star", price: 75 }
+];
 
 app.use(cors());
 app.use(express.json({ limit: "80kb" }));
@@ -69,9 +74,8 @@ app.post("/api/auth/login", async (req, res) => {
   const password = String(req.body?.password || "");
   const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
 
-  if (!user || !(await verifyPassword(password, user.password_hash))) {
-    return res.status(401).json({ error: "Email ou senha invalidos." });
-  }
+  if (!user) return res.status(401).json({ error: "Email nao cadastrado." });
+  if (!(await verifyPassword(password, user.password_hash))) return res.status(401).json({ error: "Senha incorreta." });
 
   db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
   res.json({ token: createToken(user), ...loadSession(user.id) });
@@ -97,14 +101,57 @@ app.patch("/api/progress/tutorial", authRequired, requireUser, (req, res) => {
   res.json({ progress: getProgress(req.user.id) });
 });
 
+app.patch("/api/progress/outfit", authRequired, requireUser, (req, res) => {
+  const outfitId = String(req.body?.outfit || "classic");
+  const outfit = outfitCatalog.find((item) => item.id === outfitId);
+  if (!outfit) return res.status(400).json({ error: "Look invalido." });
+
+  const updateOutfit = db.transaction(() => {
+    const current = getProgress(req.user.id);
+    const unlocked = Array.isArray(current.unlockedOutfits) && current.unlockedOutfits.length
+      ? current.unlockedOutfits
+      : ["classic"];
+
+    if (!unlocked.includes(outfit.id)) {
+      if (current.coins < outfit.price) return { error: "A Cacau ainda precisa de mais estrelas." };
+      unlocked.push(outfit.id);
+      db.prepare(`
+        UPDATE progress
+        SET coins = coins - ?,
+            outfit = ?,
+            unlocked_outfits = ?,
+            updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(outfit.price, outfit.id, JSON.stringify(unlocked), req.user.id);
+    } else {
+      db.prepare(`
+        UPDATE progress
+        SET outfit = ?,
+            unlocked_outfits = ?,
+            updated_at = datetime('now')
+        WHERE user_id = ?
+      `).run(outfit.id, JSON.stringify(unlocked), req.user.id);
+    }
+
+    return { progress: getProgress(req.user.id) };
+  });
+
+  const result = updateOutfit();
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(result);
+});
+
 app.post("/api/game/session", authRequired, requireUser, (req, res) => {
-  const score = clampInteger(req.body?.score, 0, 200000);
-  const levelReached = clampInteger(req.body?.levelReached, 1, 500);
+  const requestedScore = clampInteger(req.body?.score, 0, 200000);
+  const requestedLevel = clampInteger(req.body?.levelReached, 1, 500);
   const deliveries = clampInteger(req.body?.deliveries, 0, 500);
   const requestedCoins = clampInteger(req.body?.coinsEarned, 0, 5000);
   const durationSeconds = clampInteger(req.body?.durationSeconds, 1, 7200);
 
   // Server-side caps reduce easy client-side tampering while keeping the game lightweight.
+  const fairScoreCap = 250 + durationSeconds * 110 + deliveries * 450;
+  const score = Math.min(requestedScore, fairScoreCap);
+  const levelReached = Math.min(requestedLevel, 1 + Math.floor(deliveries / 3));
   const fairCoinCap = 12 + deliveries * 4 + Math.floor(score / 80);
   const coinsAwarded = Math.min(requestedCoins, fairCoinCap);
   const xpAwarded = Math.min(6000, Math.floor(score * 0.28) + deliveries * 45 + levelReached * 12);

@@ -95,6 +95,13 @@ button:hover {
 .game.is-menu .hud,
 .game.is-menu .bag-paws,
 .game.is-menu .controls,
+.game.is-auth .hud,
+.game.is-auth .bag-paws,
+.game.is-auth .controls,
+.game.is-auth .account-bar,
+.game.is-playing .account-bar,
+.game.is-paused .account-bar,
+.game.is-ended .account-bar,
 .game.is-shop .hud,
 .game.is-shop .bag-paws,
 .game.is-shop .controls,
@@ -209,6 +216,13 @@ button:hover {
   box-shadow: 0 18px 50px rgba(23, 48, 71, 0.16);
   backdrop-filter: blur(14px);
   pointer-events: none;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.bag-paws.is-carrying {
+  border-color: rgba(251, 191, 36, 0.86);
+  box-shadow: 0 18px 50px rgba(23, 48, 71, 0.16), 0 0 0 4px rgba(251, 191, 36, 0.16);
+  transform: translateY(-2px);
 }
 
 .bag-label {
@@ -343,14 +357,6 @@ h2 {
   backdrop-filter: blur(14px);
 }
 
-.game.is-playing .account-bar,
-.game.is-paused .account-bar,
-.game.is-ended .account-bar {
-  top: auto;
-  right: 16px;
-  bottom: 76px;
-}
-
 .account-bar span,
 .account-bar strong {
   display: block;
@@ -412,11 +418,64 @@ h2 {
   width: min(720px, 100%);
 }
 
+.auth-gate {
+  background:
+    linear-gradient(rgba(13, 46, 70, 0.08), rgba(13, 46, 70, 0.28)),
+    radial-gradient(circle at 25% 18%, rgba(255, 240, 157, 0.48), transparent 28%),
+    radial-gradient(circle at 78% 24%, rgba(232, 93, 146, 0.32), transparent 30%);
+}
+
+.auth-copy {
+  max-width: 440px;
+  margin: -8px auto 18px;
+  color: #57738a;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+.visitor-button:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+  filter: grayscale(0.25);
+}
+
 .auth-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-bottom: 14px;
+}
+
+.auth-card::after {
+  content: "";
+  display: none;
+}
+
+.auth-gate.is-checking .auth-tabs,
+.auth-gate.is-checking .auth-form,
+.auth-gate.is-checking .visitor-button {
+  display: none;
+}
+
+.auth-gate.is-checking .auth-copy {
+  margin-bottom: 10px;
+}
+
+.auth-gate.is-checking .auth-card::after {
+  width: 54px;
+  height: 54px;
+  display: block;
+  margin: 16px auto 0;
+  border: 6px solid rgba(36, 120, 199, 0.18);
+  border-top-color: var(--rose);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tab-button {

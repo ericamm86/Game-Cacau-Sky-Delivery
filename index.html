@@ -4,11 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cacau Sky Delivery</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%238bd7ff'/%3E%3Ccircle cx='25' cy='31' r='15' fill='%23111417'/%3E%3Ccircle cx='39' cy='27' r='11' fill='%23111417'/%3E%3Ccircle cx='43' cy='25' r='3' fill='%23fff'/%3E%3Ccircle cx='44' cy='25' r='1.4' fill='%23173047'/%3E%3Cellipse cx='49' cy='32' rx='7' ry='5' fill='%23b86b33'/%3E%3Cpath d='M21 18 12 7M35 17 42 7' stroke='%23111417' stroke-width='6' stroke-linecap='round'/%3E%3Cpath d='M16 44h28' stroke='%23ffca3a' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css?v=cloud-meta-20260520">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.90.0/phaser.min.js"></script>
 </head>
 <body>
-  <main class="game is-menu" id="gameRoot">
+  <main class="game is-auth" id="gameRoot">
     <div id="gameCanvas" class="phaser-stage" aria-label="Cacau Sky Delivery"></div>
 
     <section class="account-bar" aria-label="Conta e progresso">
@@ -64,10 +65,10 @@
       <div class="paw-row" id="pawBag"></div>
     </aside>
 
-    <section class="panel" id="startPanel">
+    <section class="panel hidden" id="startPanel">
       <div class="panel-inner">
         <p>Cacau Sky Delivery</p>
-        <h1>Cacau leva bebes animais para casa</h1>
+        <h1>Ajude Cacau a salvar os bebês animais</h1>
         <div class="menu-actions">
           <button id="startButton" type="button">Jogar</button>
           <button class="secondary-button" id="shopButton" type="button">Looks</button>
@@ -103,10 +104,11 @@
       </div>
     </section>
 
-    <section class="panel hidden" id="authPanel">
+    <section class="panel auth-gate" id="authPanel">
       <div class="panel-inner auth-card">
         <p>Conta Cacau</p>
-        <h2>Salvar na nuvem</h2>
+        <h2>Entre para começar</h2>
+        <div class="auth-copy">Seu progresso, moedas, looks e recordes ficam salvos na nuvem da Cacau.</div>
         <div class="auth-tabs">
           <button class="tab-button active" id="loginTab" type="button">Login</button>
           <button class="tab-button" id="registerTab" type="button">Cadastro</button>
@@ -117,13 +119,14 @@
           <button type="submit">Entrar</button>
         </form>
         <form class="auth-form hidden" id="registerForm">
-          <label>Nome<input id="registerName" name="name" minlength="2" maxlength="60" required></label>
+          <label>Nome<input id="registerName" name="name" autocomplete="name" minlength="2" maxlength="60" required></label>
           <label>Email<input id="registerEmail" name="email" type="email" autocomplete="email" required></label>
           <label>Senha<input id="registerPassword" name="password" type="password" minlength="6" autocomplete="new-password" required></label>
           <button type="submit">Criar conta</button>
         </form>
         <div class="form-message" id="authMessage"></div>
-        <button class="secondary-button" id="closeAuthButton" type="button">Voltar</button>
+        <button class="secondary-button visitor-button" type="button" disabled>Continuar como visitante desativado</button>
+        <button class="secondary-button hidden" id="closeAuthButton" type="button">Voltar</button>
       </div>
     </section>
 

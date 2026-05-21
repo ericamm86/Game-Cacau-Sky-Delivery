@@ -13,6 +13,14 @@ db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 db.exec(fs.readFileSync(schemaPath, "utf8"));
 
+function ensureColumn(table, column, definition) {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((row) => row.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+ensureColumn("progress", "outfit", "TEXT NOT NULL DEFAULT 'classic'");
+ensureColumn("progress", "unlocked_outfits", "TEXT NOT NULL DEFAULT '[\"classic\"]'");
+
 const defaultAchievements = [
   ["first_delivery", "Primeira entrega", "Entregue seu primeiro filhote para a familia correta.", 10, 40],
   ["star_keeper", "Guardia das estrelas", "Acumule 50 moedas no total.", 25, 80],
@@ -44,7 +52,15 @@ function calculatePlayerLevel(xp) {
 }
 
 function getProgress(userId) {
-  return db.prepare("SELECT * FROM progress WHERE user_id = ?").get(userId);
+  const progress = db.prepare("SELECT * FROM progress WHERE user_id = ?").get(userId);
+  if (!progress) return null;
+  try {
+    progress.unlockedOutfits = JSON.parse(progress.unlocked_outfits || "[\"classic\"]");
+  } catch {
+    progress.unlockedOutfits = ["classic"];
+  }
+  progress.outfit = progress.outfit || "classic";
+  return progress;
 }
 
 function getAchievements(userId) {

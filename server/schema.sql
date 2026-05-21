@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS progress (
   player_level INTEGER NOT NULL DEFAULT 1 CHECK (player_level >= 1),
   phase INTEGER NOT NULL DEFAULT 1 CHECK (phase >= 1),
   best_score INTEGER NOT NULL DEFAULT 0 CHECK (best_score >= 0),
+  outfit TEXT NOT NULL DEFAULT 'classic',
+  unlocked_outfits TEXT NOT NULL DEFAULT '["classic"]',
   total_deliveries INTEGER NOT NULL DEFAULT 0 CHECK (total_deliveries >= 0),
   total_games INTEGER NOT NULL DEFAULT 0 CHECK (total_games >= 0),
   tutorial_done INTEGER NOT NULL DEFAULT 0 CHECK (tutorial_done IN (0, 1)),
