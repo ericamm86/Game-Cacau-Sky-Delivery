@@ -77,7 +77,149 @@ button:hover {
   display: block;
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
   touch-action: none;
+}
+
+@media (max-width: 768px) {
+  .game {
+    height: 100svh;
+    min-height: 100svh;
+  }
+
+  .phaser-stage {
+    height: 100svh;
+    align-items: start;
+    justify-items: start;
+    place-items: start start;
+    padding: clamp(144px, 17svh, 148px) 0 calc(max(86px, env(safe-area-inset-bottom)) + 16px);
+  }
+
+  .phaser-stage canvas {
+    width: auto !important;
+    height: clamp(340px, 50svh, 430px) !important;
+    margin-top: 0 !important;
+    margin-bottom: auto !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    max-width: none;
+    max-height: none;
+    transform: translateX(clamp(-52px, -12vw, -36px));
+  }
+
+  .game.is-auth .phaser-stage,
+  .game.is-menu .phaser-stage,
+  .game.is-shop .phaser-stage,
+  .game.is-ended .phaser-stage {
+    place-items: center;
+    padding: 0;
+  }
+
+  .game.is-auth .phaser-stage canvas,
+  .game.is-menu .phaser-stage canvas,
+  .game.is-shop .phaser-stage canvas,
+  .game.is-ended .phaser-stage canvas {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100%;
+    max-height: 100%;
+    transform: none;
+  }
+
+  .panel {
+    align-items: start;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) calc(max(10px, env(safe-area-inset-bottom)) + 12px) max(10px, env(safe-area-inset-left));
+  }
+
+  .panel-inner {
+    max-height: calc(100svh - max(20px, env(safe-area-inset-top)) - max(22px, env(safe-area-inset-bottom)));
+    overflow: auto;
+  }
+
+  .tutorial-card {
+    padding: 16px 14px;
+  }
+
+  .tutorial-card h2 {
+    margin-bottom: 14px;
+    font-size: clamp(2rem, 10vw, 3rem);
+    line-height: 0.95;
+  }
+
+  .tutorial-card .tutorial-grid {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .tutorial-grid div {
+    min-height: 0;
+    padding: 9px 10px;
+    gap: 10px;
+  }
+
+  .tutorial-grid strong {
+    width: 30px;
+    height: 30px;
+    font-size: 0.95rem;
+  }
+
+  .tutorial-grid span {
+    font-size: 0.9rem;
+    line-height: 1.18;
+  }
+
+  #finishTutorialButton {
+    min-height: 46px;
+  }
+
+  .hud {
+    top: max(8px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .stat {
+    height: 40px;
+    padding: 5px 7px;
+    overflow: hidden;
+  }
+
+  .stat span {
+    font-size: 0.54rem;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .stat strong {
+    margin-top: 2px;
+    font-size: 1rem;
+  }
+
+  .mission {
+    grid-column: 1 / -1;
+    min-height: 36px;
+    max-height: 42px;
+    padding: 8px 10px;
+    font-size: 0.72rem;
+    line-height: 1.15;
+  }
+
+  .pause-button {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 62px);
+  }
+
+  .controls {
+    display: none;
+  }
+
+  .bag-paws {
+    left: max(8px, env(safe-area-inset-left));
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 58px);
+  }
 }
 
 .hud {
@@ -262,6 +404,7 @@ button:hover {
 .panel {
   position: fixed;
   inset: 0;
+  z-index: 20;
   display: grid;
   place-items: center;
   padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
@@ -656,13 +799,6 @@ h2 {
 }
 
 @media (max-width: 640px) {
-  .phaser-stage canvas {
-    width: 100% !important;
-    height: 100% !important;
-    max-width: none;
-    max-height: none;
-  }
-
   button {
     min-width: 0;
     min-height: 52px;
@@ -675,31 +811,32 @@ h2 {
     left: max(8px, env(safe-area-inset-left));
     right: max(8px, env(safe-area-inset-right));
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 6px;
+    gap: 5px;
   }
 
   .stat {
-    height: 45px;
-    padding: 6px 8px;
+    height: 40px;
+    padding: 5px 7px;
     overflow: hidden;
   }
 
   .stat span {
-    font-size: 0.56rem;
+    font-size: 0.54rem;
     line-height: 1;
     white-space: nowrap;
   }
 
   .stat strong {
     margin-top: 2px;
-    font-size: 1.12rem;
+    font-size: 1rem;
   }
 
   .mission {
-    min-height: 44px;
-    padding: 10px 11px;
-    font-size: 0.78rem;
-    line-height: 1.2;
+    min-height: 36px;
+    max-height: 42px;
+    padding: 8px 10px;
+    font-size: 0.72rem;
+    line-height: 1.15;
   }
 
   .panel {
@@ -823,5 +960,61 @@ h2 {
     top: 58px;
     right: max(8px, env(safe-area-inset-right));
     bottom: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .game .controls {
+    display: none !important;
+  }
+
+  .tutorial-grid div:nth-child(4) {
+    display: none;
+  }
+
+  .panel {
+    align-items: start;
+    padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) calc(max(10px, env(safe-area-inset-bottom)) + 12px) max(10px, env(safe-area-inset-left));
+  }
+
+  .panel-inner {
+    max-height: calc(100svh - max(20px, env(safe-area-inset-top)) - max(22px, env(safe-area-inset-bottom)));
+    overflow: auto;
+  }
+
+  .tutorial-card {
+    padding: 16px 14px;
+  }
+
+  .tutorial-card h2 {
+    margin-bottom: 14px;
+    font-size: clamp(2rem, 10vw, 3rem);
+    line-height: 0.95;
+  }
+
+  .tutorial-card .tutorial-grid {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .tutorial-grid div {
+    min-height: 0;
+    padding: 9px 10px;
+    gap: 10px;
+  }
+
+  .tutorial-grid strong {
+    width: 30px;
+    height: 30px;
+    font-size: 0.95rem;
+  }
+
+  .tutorial-grid span {
+    font-size: 0.9rem;
+    line-height: 1.18;
+  }
+
+  #finishTutorialButton {
+    min-height: 46px;
   }
 }

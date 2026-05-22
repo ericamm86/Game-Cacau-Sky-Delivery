@@ -1,5 +1,6 @@
 const API_BASE = "";
 const AUTH_KEY = "cacauSkyAuth";
+const LOCAL_ACCOUNTS_KEY = "cacauSkyLocalAccounts";
 
 const appState = {
   token: null,
@@ -37,6 +38,97 @@ function storedAuth() {
 function persistAuth(token) {
   if (token) localStorage.setItem(AUTH_KEY, JSON.stringify({ token }));
   else localStorage.removeItem(AUTH_KEY);
+}
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function defaultProgress() {
+  return {
+    user_id: 0,
+    coins: 0,
+    xp: 0,
+    player_level: 1,
+    phase: 1,
+    best_score: 0,
+    outfit: "classic",
+    unlocked_outfits: "[\"classic\"]",
+    unlockedOutfits: ["classic"],
+    total_deliveries: 0,
+    total_games: 0,
+    tutorial_done: 0,
+    updated_at: new Date().toISOString()
+  };
+}
+
+function defaultAchievements() {
+  return [
+    { code: "first_delivery", title: "Primeira entrega", description: "Entregue seu primeiro filhote para a familia correta.", rewardCoins: 10, rewardXp: 40, unlockedAt: null, claimedAt: null },
+    { code: "star_keeper", title: "Guardia das estrelas", description: "Acumule 50 moedas no total.", rewardCoins: 25, rewardXp: 80, unlockedAt: null, claimedAt: null },
+    { code: "high_score_500", title: "Voo brilhante", description: "Faca 500 pontos em uma partida.", rewardCoins: 30, rewardXp: 100, unlockedAt: null, claimedAt: null },
+    { code: "family_helper", title: "Ajudante das familias", description: "Complete 10 entregas no total.", rewardCoins: 50, rewardXp: 180, unlockedAt: null, claimedAt: null },
+    { code: "level_5", title: "Cacau experiente", description: "Alcance o nivel de jogador 5.", rewardCoins: 75, rewardXp: 240, unlockedAt: null, claimedAt: null }
+  ];
+}
+
+function readLocalAccounts() {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_ACCOUNTS_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalAccounts(accounts) {
+  localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
+function toBase64(bytes) {
+  return btoa(String.fromCharCode(...new Uint8Array(bytes)));
+}
+
+async function passwordDigest(email, password) {
+  const payload = new TextEncoder().encode(`${normalizeEmail(email)}:${String(password || "")}`);
+  return toBase64(await crypto.subtle.digest("SHA-256", payload));
+}
+
+async function saveLocalAccount(email, password, data) {
+  if (!email || !password || !data?.user) return;
+  const accounts = readLocalAccounts();
+  const key = normalizeEmail(email);
+  accounts[key] = {
+    passwordHash: await passwordDigest(key, password),
+    user: { ...data.user, email: key },
+    progress: data.progress || defaultProgress(),
+    achievements: data.achievements || defaultAchievements()
+  };
+  writeLocalAccounts(accounts);
+}
+
+async function loadLocalAccount(email, password) {
+  const key = normalizeEmail(email);
+  const account = readLocalAccounts()[key];
+  if (!account) return null;
+  const hash = await passwordDigest(key, password);
+  if (hash !== account.passwordHash) throw new Error("Senha incorreta.");
+  return {
+    token: `local:${key}`,
+    user: account.user,
+    progress: account.progress || defaultProgress(),
+    achievements: account.achievements || defaultAchievements()
+  };
+}
+
+function updateLocalAccount() {
+  if (!String(appState.token || "").startsWith("local:") || !appState.user?.email) return;
+  const accounts = readLocalAccounts();
+  const key = normalizeEmail(appState.user.email);
+  if (!accounts[key]) return;
+  accounts[key].user = appState.user;
+  accounts[key].progress = appState.progress || defaultProgress();
+  accounts[key].achievements = appState.achievements || defaultAchievements();
+  writeLocalAccounts(accounts);
 }
 
 async function request(path, options = {}) {
@@ -82,8 +174,9 @@ function renderAccount() {
   ui.accountLevel.textContent = `Nivel ${level}`;
   ui.xpFill.style.width = `${Math.round(progressRatio * 100)}%`;
   ui.logoutButton.classList.toggle("hidden", !appState.user);
+  const localMode = String(appState.token || "").startsWith("local:");
   ui.cloudStatus.textContent = appState.user
-    ? `Nuvem ativa: ${progress?.coins || 0} moedas, ${xp} XP.`
+    ? `${localMode ? "Conta local" : "Nuvem ativa"}: ${progress?.coins || 0} moedas, ${xp} XP.`
     : "Entre na conta para salvar na nuvem.";
 }
 
@@ -150,6 +243,21 @@ async function loadMe() {
     showAuthGate();
     return;
   }
+  if (String(auth.token).startsWith("local:")) {
+    const email = auth.token.slice("local:".length);
+    const account = readLocalAccounts()[email];
+    if (account) {
+      appState.token = auth.token;
+      applySession({
+        user: account.user,
+        progress: account.progress || defaultProgress(),
+        achievements: account.achievements || defaultAchievements()
+      });
+      showMainMenu();
+      return;
+    }
+    persistAuth(null);
+  }
   appState.token = auth.token;
   setAuthChecking(true);
   showPanel(ui.authPanel);
@@ -203,6 +311,30 @@ function renderAchievements() {
 
 async function submitGameResult(result) {
   if (!appState.user || !appState.token) return null;
+  if (String(appState.token).startsWith("local:")) {
+    const progress = appState.progress || defaultProgress();
+    const score = Math.max(0, Number.parseInt(result?.score, 10) || 0);
+    const levelReached = Math.max(1, Number.parseInt(result?.levelReached, 10) || 1);
+    const deliveries = Math.max(0, Number.parseInt(result?.deliveries, 10) || 0);
+    const coinsEarned = Math.max(0, Number.parseInt(result?.coinsEarned, 10) || 0);
+    const xpAwarded = Math.min(6000, Math.floor(score * 0.28) + deliveries * 45 + levelReached * 12);
+
+    appState.progress = {
+      ...progress,
+      coins: progress.coins + coinsEarned,
+      xp: progress.xp + xpAwarded,
+      player_level: Math.max(progress.player_level || 1, Math.floor(Math.sqrt(Math.max(0, progress.xp + xpAwarded) / 120)) + 1),
+      phase: Math.max(progress.phase || 1, levelReached),
+      best_score: Math.max(progress.best_score || 0, score),
+      total_deliveries: (progress.total_deliveries || 0) + deliveries,
+      total_games: (progress.total_games || 0) + 1,
+      updated_at: new Date().toISOString()
+    };
+    updateLocalAccount();
+    renderAccount();
+    renderAchievements();
+    return { progress: appState.progress, achievements: appState.achievements };
+  }
   try {
     const data = await request("/api/game/session", {
       method: "POST",
@@ -224,6 +356,21 @@ async function saveOutfit(outfit) {
   if (!appState.user || !appState.token) {
     showAuthGate("Entre na conta para salvar looks.");
     return null;
+  }
+  if (String(appState.token).startsWith("local:")) {
+    const progress = appState.progress || defaultProgress();
+    const unlocked = Array.isArray(progress.unlockedOutfits) ? progress.unlockedOutfits : ["classic"];
+    if (!unlocked.includes(outfit)) unlocked.push(outfit);
+    appState.progress = {
+      ...progress,
+      outfit,
+      unlockedOutfits: unlocked,
+      unlocked_outfits: JSON.stringify(unlocked),
+      updated_at: new Date().toISOString()
+    };
+    updateLocalAccount();
+    renderAccount();
+    return { progress: appState.progress };
   }
   try {
     const data = await request("/api/progress/outfit", {
@@ -253,37 +400,61 @@ document.getElementById("registerTab").addEventListener("click", () => setAuthMo
 ui.loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   ui.authMessage.textContent = "Entrando...";
+  const email = document.getElementById("loginEmail").value;
+  const password = document.getElementById("loginPassword").value;
   try {
     const data = await request("/api/auth/login", {
       method: "POST",
       body: {
-        email: document.getElementById("loginEmail").value,
-        password: document.getElementById("loginPassword").value
+        email,
+        password
       }
     });
+    await saveLocalAccount(email, password, data);
     applySession(data, data.token);
     showMainMenu();
   } catch (error) {
-    ui.authMessage.textContent = error.message;
+    try {
+      const localData = await loadLocalAccount(email, password);
+      applySession(localData, localData.token);
+      ui.authMessage.textContent = "";
+      showMainMenu();
+    } catch (localError) {
+      ui.authMessage.textContent = localError.message === "Senha incorreta." ? localError.message : error.message;
+    }
   }
 });
 
 ui.registerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   ui.authMessage.textContent = "Criando conta...";
+  const name = document.getElementById("registerName").value;
+  const email = document.getElementById("registerEmail").value;
+  const password = document.getElementById("registerPassword").value;
   try {
     const data = await request("/api/auth/register", {
       method: "POST",
       body: {
-        name: document.getElementById("registerName").value,
-        email: document.getElementById("registerEmail").value,
-        password: document.getElementById("registerPassword").value
+        name,
+        email,
+        password
       }
     });
+    await saveLocalAccount(email, password, data);
     applySession(data, data.token);
     showMainMenu();
   } catch (error) {
-    ui.authMessage.textContent = error.message;
+    if (error.message !== "Este email ja esta cadastrado.") {
+      ui.authMessage.textContent = error.message;
+      return;
+    }
+    const localData = await loadLocalAccount(email, password).catch(() => null);
+    if (!localData) {
+      ui.authMessage.textContent = error.message;
+      return;
+    }
+    applySession(localData, localData.token);
+    showMainMenu();
   }
 });
 
