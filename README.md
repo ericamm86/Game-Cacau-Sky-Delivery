@@ -1,6 +1,8 @@
 # Cacau Sky Delivery
 
-Jogo em HTML, CSS e JavaScript com Phaser 3, agora com backend Node.js, autenticação, progresso em banco SQLite, ranking global, XP, moedas, níveis, tutorial e conquistas.
+Cacau Sky Delivery e um jogo web de entregas aereas que combina diversao arcade com progresso salvo, ranking global, XP, moedas, niveis e conquistas para aumentar engajamento e replay.
+
+O projeto resolve a necessidade de uma experiencia jogavel completa no navegador, com backend Node.js, autenticacao e persistencia em SQLite para registrar usuarios, partidas e evolucao.
 
 ## Como executar
 
